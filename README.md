@@ -11,43 +11,58 @@ AMD Research IBS Toolkit File Structure
 --------------------------------------------------------------------------------
 
 The AMD Research IBS Toolkit is split into three major pieces, each of which is licensed separately. These three pieces are:
-* The AMD Research IBS Driver located in [./driver/](driver)
-    - This is a Linux&reg; kernel driver that allows access to IBS traces.
-    - It is licensed under GPLv2, with the same caveats as any other Linux kernel license.
-    - When installed, this will create two new devices per CPU core:
-        1. /dev/cpu/<cpu\_id>/ibs/fetch
-        2. /dev/cpu/<cpu\_id>/ibs/op
-    - These two devices can be read using poll and read commands.
-      In addition, there are a number if ioctl commands that can be used to configure and query information about the devices.
+### The AMD Research IBS Driver ###
+* Located in [./driver/](driver)
+* This is a Linux&reg; kernel driver that allows access to IBS traces.
+* It is licensed under [GPLv2](driver/LICENSE), with the same caveats as any other Linux kernel license.
+*  When installed, this will create two new devices per CPU core:
+    - /dev/cpu/<cpu\_id>/ibs/fetch
+    - /dev/cpu/<cpu\_id>/ibs/op
+* These two devices can be read using poll and read commands. In addition, there are a number if ioctl commands that can be used to configure and query information about the devices.
     - The structs used by reads, and the ioctl commands, are defined in: [./include/ibs-uapi.h](include/ibs-uapi.h)
     - A list of bit value locations from the AMD manuals that describe individual entries in each IBS reading are contained in: [./include/ibs-msr-index.h](include/ibs-msr-index.h)
-        - These last two files are dual licensed. You can choose to use them under the GPLv2 or under a 3-clause BSD license.
-* A library to configure IBS and read IBS samples located in [./lib/](lib)
-    - This library allows user-level programs to easily configure the IBS driver. This includes enabling and disabling IBS, setting driver  options such as internal IBS buffer sizes, and setting HW config values.
-    - This library is also useful for reading IBS samples into meaningful data structures and making them available to other applications.
-    - This library also has a daemon mode, where a user program can launch an IBS-sample-reading daemon in the background that will dump IBS samples into a file while the regular program runs.
-    - It is licensed under a 3-clause BSD license.
-* A collection of user tools to gather and analyze IBS samples in [./tools/](tools)
-    * All of this software is licensed under a 3-clause BSD license
-    * An application that tests the IBS driver, located in [./tools/ibs\_test/](tools/ibs_test)
-           - This application checks to see if the AMD Research IBS Driver is installed and configurable. It attempts to open the op sampling device and read samples. It does nothing with these samples.
-        - The application takes one argument: the number of times to attempt to read IBS samples from the driver before quitting. This is set  by the optional argument to the application.
-          0 or a negative value for this means "run until killed".
-    * An IBS monitoring program located in [./tools/ibs\_monitor/](tools/ibs_monitor)
-        - This application is a wrapper that enables IBS tracing in our driver, runs a target program, and saves off IBS traces into designated files until the target program ends. Afterwards, it disables IBS tracing.
-        - Essentially, this gathers IBS traces for other programs.
-    * An application to decode binary IBS dumps in [./tools/ibs\_decoder/](tools/ibs_decoder)
-        - By default, the ibs_monitor application will dump full IBS traces directly to files without doing any decoding on them. This is to prevent the decoding work from interrupting or slowing down the application under test.
-        - The ibs_decoder application will read in these binary traces that are essentially dumps of the IBS sample data structures and split them into easy-to-read CSV files.
-        - In addition, there is a script which will automatically convert these CSV files into R data structures, for further data analysis.
-    * An application to match IBS samples with their instructions in [./tools/ibs\_run\_and\_annotate/](tools/ibs_run_and_annotate)
-        - This application will run the IBS monitor and IBS decoder applications above on a target application. It will automatically run the target application, gather IBS traces, and decode them to a CSV file.
-        - In addition, it will save enough information about the program's dynamically linked libraries to allow nearly all IBS samples to be "annotated" with the instruction that they represent. If the libraries and target application are built with debug symbols, this tool will also annotate the IBS samples with the line of code that produced the sampled instruction.
-        - The end result of this run is a new annotated CSV file of IBS samples that also includes the source line of code, offset into the binary or library, AMD64 opcode of the instruction, and a human-readable version of the instruction.
-    * An application that uses the LibIBS daemon in [./tools/ibs\_daemon/](tools/ibs_daemon)
-        - This is an example of how to use the LibIBS daemon to handle IBS sampling within an application. The daemon will start up another thread that will dump IBS traces to a file in a user-defined way.
-        - This application gathers a collection of op sample traces and dumps them to a small CSV file. It does this until the application ends.
-        - This is somewhat similar to what the ibs_monitor application does, but this application demonstrates using the libIBS daemon and taking advantage of its ability to do user-defined handlers for IBS samples before spitting data out to a file.
+        - These last two files are dual licensed. You can choose to use them under the [GPLv2](include/LICENSE.gpl) or under a [3-clause BSD license](include/LICENSE.bsd).
+
+### A library to configure IBS and read IBS samples ###
+* Located in [./lib/](lib)
+* It is licensed under a [3-clause BSD license](lib/LICENSE).
+* This library allows user-level programs to easily configure the IBS driver.
+    - This includes enabling and disabling IBS, setting driver  options such as internal IBS buffer sizes, and setting HW config values.
+* This library is also useful for reading IBS samples into meaningful data structures and making them available to other applications.
+* This library also has a daemon mode, where a user program can launch an IBS-sample-reading daemon in the background that will dump IBS samples into a file while the regular program runs.
+
+### A collection of user-level tools to gather and analyze IBS samples ###
+* Located in [./tools/](tools)
+* All of this software is licensed under a [3-clause BSD license](tools/LICENSE).
+
+#### An application that tests the IBS driver ####
+* Located in [./tools/ibs\_test/](tools/ibs_test)
+* This application checks to see if the AMD Research IBS Driver is installed and configurable. It attempts to open the op sampling device and read samples. It does nothing with these samples.
+* The application takes one argument: the number of times to attempt to read IBS samples from the driver before quitting. This is set  by the optional argument to the application.
+    - 0 or a negative value for this means "run until killed".
+
+#### An IBS monitoring program ####
+* Located in [./tools/ibs\_monitor/](tools/ibs_monitor)
+* This application is a wrapper that enables IBS tracing in our driver, runs a target program, and saves off IBS traces into designated files until the target program ends. Afterwards, it disables IBS tracing.
+* Essentially, this gathers IBS traces for other programs.
+
+#### An application to decode binary IBS dumps ####
+* Located in [./tools/ibs\_decoder/](tools/ibs_decoder)
+* By default, the ibs\_monitor application will dump full IBS traces directly to files without doing any decoding on them. This is to prevent the decoding work from interrupting or slowing down the application under test.
+* The ibs\_decoder application will read in these binary traces that are essentially dumps of the IBS sample data structures and split them into easy-to-read CSV files.
+* In addition, there is a script which will automatically convert these CSV files into R data structures, for further data analysis.
+
+#### An application to match IBS samples with their instructions ####
+* Located in [./tools/ibs\_run\_and\_annotate/](tools/ibs_run_and_annotate)
+* This application will run the IBS monitor and IBS decoder applications above on a target application. It will automatically run the target application, gather IBS traces, and decode them to a CSV file.
+* In addition, it will save enough information about the program's dynamically linked libraries to allow nearly all IBS samples to be "annotated" with the instruction that they represent. If the libraries and target application are built with debug symbols, this tool will also annotate the IBS samples with the line of code that produced the sampled instruction.
+* The end result of this run is a new annotated CSV file of IBS samples that also includes the source line of code, offset into the binary or library, AMD64 opcode of the instruction, and a human-readable version of the instruction.
+
+#### An application that uses the libIBS daemon ####
+* Located in [./tools/ibs\_daemon/](tools/ibs_daemon)
+* This is an example of how to use the [libIBS](lib) daemon to handle IBS sampling within an application. The daemon will start up another thread that will dump IBS traces to a file in a user-defined way.
+* This application gathers a collection of op sample traces and dumps them to a small CSV file. It does this until the application ends.
+* This is somewhat similar to what the ibs\_monitor application does, but this application demonstrates using the libIBS daemon and taking advantage of its ability to do user-defined handlers for IBS samples before spitting data out to a file.
 
 Building and Installing the AMD Research IBS Driver and Toolkit
 --------------------------------------------------------------------------------
@@ -58,7 +73,7 @@ Everything in the AMD Research IBS Toolkit can be build from the main directory 
 
 This will build the driver, libIBS, and all of the tools. Alternately, it is also possible to go into each directory and use the `make` command to build only that tool.
 
-The make command uses the CC and CXX environment variables to find its compiler, and it uses the system-wide 'cc' and 'c++' compilers by default. You can override these to use other compilers (e.g. clang), by running e.g.:
+The make command uses the CC and CXX environment variables to find its compiler, and it uses the system-wide `cc` and `c++` compilers by default. You can override these to use other compilers (e.g. `clang`), by running e.g.:
 
     CC=clang CXX=clang++ make
 
@@ -68,20 +83,21 @@ Note that this also allows Clang's scan-build by running:
 
 In addition, compilation can be done in parallel with `make -j {parallelism #}`
 
-Finally, the 'cppcheck' and 'pylint tools can be run on this repo with:
+Finally, the `cppcheck` and `pylint` tools can be run on this repo with:
 
     make check
 
 Before using any IBS-using tools, you should install the IBS driver that you have built. There is a helper script in the ./driver/ directory for this:
 
-    ./driver/install\_ibs\_driver.sh
+    ./driver/install_ibs_driver.sh
 
 Note that, if you don't run this script with sudo, it will attept to install the driver using a sudo command that will likely ask for your password. You may need to do this every time you boot the system, unless you add the ibs.ko module to your boot-time list of modules to load.
 
 After installing the driver, you should see IBS nodes in the file system at
 the following locations for each core ID <core\_id>:
+
     1. /dev/cpu/<core\_id>/ibs/op
-    1. /dev/cpu/<core\_id>/ibs/fetch
+    2. /dev/cpu/<core\_id>/ibs/fetch
 
 
 To uninstall the IBS driver, you can either run:
@@ -90,59 +106,57 @@ To uninstall the IBS driver, you can either run:
 
 Or you can use the helper script at:
 
-    ./drivers/remove\_ibs\_driver.sh
+    ./drivers/remove_ibs_driver.sh
 
-The user interface to the driver is documented in ./include/ibs-uapi.h. This file may be included by user application code. See [./tools/ibs\_monitor/](tools/ibs_monitor) for an example of how to interface with the driver.
+The user interface to the driver is documented in [./include/ibs-uapi.h](include/ibs-uapi.h). This file may be included by user application code. See [./tools/ibs\_monitor/](tools/ibs_monitor) for an example of how to interface with the driver.
 
 AMD Research IBS Toolkit Compatibility
 --------------------------------------------------------------------------------
 This toolkit has been tested to compile and install on the following systems:
-  * CentOS 5.8 (Linux&reg; kernel 2.6.18-419)
-       - Using gcc 4.1.2
-  * CentOS 6.4 (Linux kernel 2.6.32-358.23.2)
-       - Using gcc 4.4.7, clang 3.4.2, cppcheck 1.63
-  * CentOS 7.3 (Linux kernel 3.10.0-514.10.2)
-       - Using gcc 4.8.5, clang 3.4.2, cppcheck 1.75
-  * OpenSUSE 11.2 (Linux kernel 2.6.31.14-0.8)
-       - Using gcc 4.4.1
-  * OpenSUSE Leap 42.2 (Linux kernel 4.4.49-16)
-       - Using gcc 4.8.5, clang 3.8.0, cppcheck 1.70
-  * Ubuntu 9.04 (Linux kernel 2.6.28-11)
-       - Using gcc 4.3.3
-  * Ubuntu 10.04 LTS (Linux kernel 2.6.32-21)
-       - Using gcc 4.4.3
-  * Ubuntu 12.04.5 LTS (Linux kernel 3.13.0-113)
-       - Using gcc 4.6.3, clang 3.0, cppcheck 1.52
-  * Ubuntu 14.04.1 LTS (Linux kernel 3.19.0)
-       - Using gcc 4.8.2, clang 3.4, cppcheck 1.61, pylint 1.1.0
-  * Ubuntu 14.04.4 LTS (Linux kernel 4.2.0-34)
-       - Using gcc 4.9.3, clang 3.5.0, cppcheck 1.61, pylint 1.1.0
-  * Ubuntu 16.04.2 LTS (Linux kernel 4.4.0-66)
-       - Using gcc 5.4.0, clang 3.8.0, cppcheck 1.72, pylint 1.5.2
-  * Ubuntu 16.10 (Linux kernel 4.8.0-22)
-       - Using gcc 6.2.0, clang 3.8.1, cppcheck 1.75
+* CentOS 5.8 (Linux&reg; kernel 2.6.18-419)
+    - Using gcc 4.1.2
+* CentOS 6.4 (Linux kernel 2.6.32-358.23.2)
+    - Using gcc 4.4.7, clang 3.4.2, cppcheck 1.63
+* CentOS 7.3 (Linux kernel 3.10.0-514.10.2)
+    - Using gcc 4.8.5, clang 3.4.2, cppcheck 1.75
+* OpenSUSE 11.2 (Linux kernel 2.6.31.14-0.8)
+    - Using gcc 4.4.1
+* OpenSUSE Leap 42.2 (Linux kernel 4.4.49-16)
+    - Using gcc 4.8.5, clang 3.8.0, cppcheck 1.70
+* Ubuntu 9.04 (Linux kernel 2.6.28-11)
+    - Using gcc 4.3.3
+* Ubuntu 10.04 LTS (Linux kernel 2.6.32-21)
+    - Using gcc 4.4.3
+* Ubuntu 12.04.5 LTS (Linux kernel 3.13.0-113)
+    - Using gcc 4.6.3, clang 3.0, cppcheck 1.52
+* Ubuntu 14.04.1 LTS (Linux kernel 3.19.0)
+    - Using gcc 4.8.2, clang 3.4, cppcheck 1.61, pylint 1.1.0
+* Ubuntu 14.04.4 LTS (Linux kernel 4.2.0-34)
+    - Using gcc 4.9.3, clang 3.5.0, cppcheck 1.61, pylint 1.1.0
+* Ubuntu 16.04.2 LTS (Linux kernel 4.4.0-66)
+    - Using gcc 5.4.0, clang 3.8.0, cppcheck 1.72, pylint 1.5.2
+* Ubuntu 16.10 (Linux kernel 4.8.0-22)
+    - Using gcc 6.2.0, clang 3.8.1, cppcheck 1.75
 
-In addition, it has been tested on the following processors, though its logic
-should work for any processors in AMD Families 10h, 12h, 14h, 15h, 16h, or 17h
-that support IBS:
-  * AMD Phenom&trade; II X4 B95
-        Family 10h Model 04h (Revision C)
-  * AMD Phenom&trade; II X6 1090T
-        Family 10h Model 0Ah (Revision E)
-  * AMD Opteron&trade; 4274 HE
-        Family 15h Model 01h (CPU formerly code-named "Bulldozer")
-  * AMD A8-5500 APU
-        Family 15h Model 10h (CPU formerly code-named "Piledriver")
-  * AMD A10-7850K APU
-        Family 15h Model 30h (CPU formerly code-named "Steamroller")
-  * AMD FX-8800P
-        Family 15h Model 60h (CPU formerly code-named "Excavator")
-  * AMD Ryzen&trade; 7 1800X
-        Family 17h Model 01h (CPU formerly code-named "Zen")
+In addition, it has been tested on the following processors, though its logic should work for any processors in AMD Families 10h, 12h, 14h, 15h, 16h, or 17h that support IBS:
+* AMD Phenom&trade; II X4 B95
+    - Family 10h Model 04h (Revision C)
+* AMD Phenom&trade; II X6 1090T
+    - Family 10h Model 0Ah (Revision E)
+* AMD Opteron&trade; 4274 HE
+    - Family 15h Model 01h (CPU formerly code-named "Bulldozer")
+* AMD A8-5500 APU
+    - Family 15h Model 10h (CPU formerly code-named "Piledriver")
+* AMD A10-7850K APU
+    - Family 15h Model 30h (CPU formerly code-named "Steamroller")
+* AMD FX-8800P
+    - Family 15h Model 60h (CPU formerly code-named "Excavator")
+* AMD Ryzen&trade; 7 1800X
+    - Family 17h Model 01h (CPU formerly code-named "Zen")
 
 Using the AMD Research IBS Toolkit
 --------------------------------------------------------------------------------
-The AMD Research IBS Toolkit includes most of the tools necessary to analyze applications using IBS. This includes the driver to access IBS, a monitoring application which automatically gathers IBS samples from an application under test, and another application to decode these IBS samples into a human-readable format.
+The AMD Research IBS Toolkit includes most of the tools necessary to analyze applications using IBS. This includes the driver to access IBS, a monitoring application which automatically gathers IBS samples from an application under test, an application to decode these IBS samples into a human-readable format, and a tool to annotate these samples with application-level information about each instruction.
 
 All of the directions here assume that the IBS driver, contained in [./driver/](driver), has been build and installed successfully.
 
@@ -154,20 +168,20 @@ An example of how to run the IBS Monitor and Decoder is as follows. These comman
 
 The following command will run the requested program with the given command line, and produce two IBS traces. One for Op samples (app.op) and one for Fetch samples (app.fetch).
 
-    ./ibs\_monitor/ibs\_monitor -o app.op -f app.fetch ${program command line}
+    ./ibs_monitor/ibs_monitor -o app.op -f app.fetch ${program command line}
 
 The following command will then decode the two IBS traces and save them into their respective CSV files:
 
-    ./ibs\_decoder/ibs\_decoder -i app.op -o op.csv -f app.fetch -g fetch.csv
+    ./ibs_decoder/ibs_decoder -i app.op -o op.csv -f app.fetch -g fetch.csv
 
 The follow command will run both of the above commands back-to-back and also annotate each IBS sample with information about the instruction that it sampled (such as its opcode and which line of code created it):
 
-    ./tools/ibs\_run\_and\_annotate/ibs\_run\_and\_annotate -o -f -d ${out\_dir} -w ${working\_dir} ${program command line}
+    ./tools/ibs_run_and_annotate/ibs_run_and_annotate -o -f -d ${output directory} -t ${temp directory}  -w ${program working directory} ${program command line}
 
 Background on Instruction Based Sampling
 --------------------------------------------------------------------------------
 
-AMD Instruction Based Sampling (IBS) is a hardware performance monitoring mechanism that is available on AMD CPUs starting with the Family 10h generation of cores (e.g. processors code-named "Barcelona" and "Shanghai" and Phenom&trade; branded consumer CPUs were from this generation). It is supported on AMD CPUs up through and including the current Family 17h processors (e.g. the Ryzen-branded consumer CPUs) with various features in each generation.
+AMD Instruction Based Sampling (IBS) is a hardware performance monitoring mechanism that is available on AMD CPUs starting with the Family 10h generation of cores (e.g. processors code-named "Barcelona" and "Shanghai" and Phenom&trade; II branded consumer CPUs were from this generation). It is supported on AMD CPUs up through and including the current Family 17h processors (e.g. the Ryzen-branded consumer CPUs) with various features in each generation.
 
 Traditionally, hardware performance counters increment whenever an event happens inside the CPU core. These events are counted whenever the core sees some event (such as a cache miss). This can lead to overcounting in cores that perform speculative, out-of-order execution, because the instruction that caused the event may never actually commit.
 
@@ -215,23 +229,23 @@ Depending on the process family, these Op IBS Samples can contain some or all of
 For more information about the technical details of AMD's Instruction Based
 Sampling, please refer AMD's various processor manuals: [5-17]
 
-1. S. V. Moore, "A Comparison of Counting and Sampling Modes of Using Performance Monitoring Hardware," in Proc. of the Int'l Conf. on Computational Science-Part II (ICCS), 2002.
-2. J. Dean, J. Hicks, C. A. Waldspurger, W. E. Weihl, G. Chrysos, "ProfileMe: Hardware Support for Instruction-Level Profiling on Out-of-Order Processors," in Proc. of the 30th IEEE/ACM Int'l Symp. on Microarchitecture (MICRO-30), 1997.
-3. P. J. Drongowski, "Instruction-Based Sampling: A New Performance Analysis Technique for AMD Family 10h Processors," AMD Technical Report, 2007.
-4. P. Drongowski, L. Yu, F. Swehosky, S. Suthikulpanit, R. Richter, "Incorporating Instruction-Based Sampling into AMD CodeAnalyst," in Proc. of the 2010 IEEE Int'l Symp. on Performance Analysis of Systems & Software (ISPASS), 2010.
-5. Advanced Micro Devices, Inc. "Software Optimization Guide for AMD Family 10h and 12h Processors". AMD Publication #40546. Rev. 3.13. Appendix G.
-6. Advanced Micro Devices, Inc. "Software Optimization Guide for AMD Family 15h Processors". AMD Publication #47414. Rev. 3.07.  Appendix F.
-7. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 10h Processors". AMD Publication #31116. Rev. 3.62.
-8. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 12h Processors". AMD Publication #41131. Rev. 3.03.
-9. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 14h Models 00h-0Fh Processors". AMD Publication #43170. Rev. 3.03.
-10. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 00h-0Fh Processors". AMD Publication #42301. Rev. 3.14.
-11. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 10h-1Fh Processors". AMD Publication #42300. Rev. 3.12.
-12. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 30h-3Fh Processors". AMD Publication #49125. Rev. 3.06.
-13. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 60h-6Fh Processors". AMD Publication #50742. Rev. 3.05.
-14. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 70h-7Fh Processors". AMD Publication #55072. Rev. 3.00.
-15. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 16h Models 00h-0Fh Processors". AMD Publication #48751. Rev. 3.03.
-16. Advanced Micro Devices, Inc. "BIOS and Kernel Developer's Guide (BKDG) For AMD Family 16h Models 30h-3Fh Processors". AMD Publication #52740. Rev. 3.06.
-17. Advanced Micro Devices, Inc. "Processor Programming Reference (PPR) for AMD Family 17h Model 01h, Revision B1 Processors". AMD Publication #54945.
+1. S. V. Moore, "[A Comparison of Counting and Sampling Modes of Using Performance Monitoring Hardware](http://icl.cs.utk.edu/news_pub/submissions/icl-ut-02-01_perfmodels.pdf)," in Proc. of the Int'l Conf. on Computational Science-Part II (ICCS), 2002.
+2. J. Dean, J. Hicks, C. A. Waldspurger, W. E. Weihl, G. Chrysos, "[ProfileMe: Hardware Support for Instruction-Level Profiling on Out-of-Order Processors](https://doi.org/10.1109/MICRO.1997.645821)," in Proc. of the 30th IEEE/ACM Int'l Symp. on Microarchitecture (MICRO-30), 1997.
+3. P. J. Drongowski, "[Instruction-Based Sampling: A New Performance Analysis Technique for AMD Family 10h Processors](http://developer.amd.com/community/blog/article/instruction-based-sampling-a-new-performance-analysis-technique-for-amd-family-10h-processors/)," AMD Technical Report, 2007.
+4. P. Drongowski, L. Yu, F. Swehosky, S. Suthikulpanit, R. Richter, "[Incorporating Instruction-Based Sampling into AMD CodeAnalyst](https://doi.org/10.1109/ISPASS.2010.5452049)," in Proc. of the 2010 IEEE Int'l Symp. on Performance Analysis of Systems & Software (ISPASS), 2010.
+5. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 10h and 12h Processors](http://support.amd.com/techdocs/40546.pdf)". AMD Publication #40546. Rev. 3.13. Appendix G.
+6. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 15h Processors](https://support.amd.com/TechDocs/47414_15h_sw_opt_guide.pdf)". AMD Publication #47414. Rev. 3.07.  Appendix F.
+7. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 10h Processors](https://developer.amd.com/wordpress/media/2012/10/31116.pdf)". AMD Publication #31116. Rev. 3.62.
+8. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 12h Processors](https://support.amd.com/TechDocs/41131.pdf)". AMD Publication #41131. Rev. 3.03.
+9. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 14h Models 00h-0Fh Processors](BIOS and Kernel Developer's Guide (BKDG) For AMD Family 14h Models 00h-0Fh Processors)". AMD Publication #43170. Rev. 3.03.
+10. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 00h-0Fh Processors](http://support.amd.com/TechDocs/42301_15h_Mod_00h-0Fh_BKDG.pdf)". AMD Publication #42301. Rev. 3.14.
+11. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 10h-1Fh Processors](http://support.amd.com/TechDocs/42300_15h_Mod_10h-1Fh_BKDG.pdf)". AMD Publication #42300. Rev. 3.12.
+12. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 30h-3Fh Processors](https://support.amd.com/TechDocs/49125_15h_Models_30h-3Fh_BKDG.pdf)". AMD Publication #49125. Rev. 3.06.
+13. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 60h-6Fh Processors](http://support.amd.com/TechDocs/50742_15h_Models_60h-6Fh_BKDG.pdf)". AMD Publication #50742. Rev. 3.05.
+14. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 70h-7Fh Processorsi](http://support.amd.com/TechDocs/55072_AMD_Family_15h_Models_70h-7Fh_BKDG.pdf)". AMD Publication #55072. Rev. 3.00.
+15. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 16h Models 00h-0Fh Processors](http://support.amd.com/TechDocs/48751_16h_bkdg.pdf)". AMD Publication #48751. Rev. 3.03.
+16. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 16h Models 30h-3Fh Processors](http://support.amd.com/TechDocs/52740_16h_Models_30h-3Fh_BKDG.pdf)". AMD Publication #52740. Rev. 3.06.
+17. Advanced Micro Devices, Inc. "[Processor Programming Reference (PPR) for AMD Family 17h Model 01h, Revision B1 Processors](http://support.amd.com/TechDocs/54945_PPR_Family_17h_Models_00h-0Fh.pdf)". AMD Publication #54945.
 
 
 Trademark Attribution

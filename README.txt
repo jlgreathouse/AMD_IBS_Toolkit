@@ -1,4 +1,4 @@
-AMD Research Instruction Based Sampling Toolkit
+A/MD Research Instruction Based Sampling Toolkit
 ===============================================================================
 
 This repository contains tools which can be used to access the Instruction
@@ -132,7 +132,7 @@ Note that this also allows Clang's scan-build by running:
 
 In addition, compilation can be done in parallel with 'make -j {parallelism#}'
 
-Finally, the 'cppcheck' and 'pylint tools can be run on this repo with:
+Finally, the 'cppcheck' and 'pylint' tools can be run on this repo with:
     make check
 
 
@@ -215,8 +215,9 @@ Using the AMD Research IBS Toolkit
 The AMD Research IBS Toolkit includes most of the tools necessary to analyze
 applications using IBS. This includes the driver to access IBS, a monitoring
 application which automatically gathers IBS samples from an application under
-test, and another application to decode these IBS samples into a human-readable
-format.
+test, an application to decode these IBS samples into a human-readable format,
+and a tool to annotate these samples with application-level information about
+each instruction.
 
 All of the directions here assume that the IBS driver, contained in ./driver/,
 has been build and installed successfully.
