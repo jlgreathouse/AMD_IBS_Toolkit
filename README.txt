@@ -336,8 +336,7 @@ programmable number of counts has taken place, the next micro-op is tagged.
 As that micro-op flows through the out-of-order back end of the processor,
 information about the events it causes are stored. When the op is retired,
 the processor is interrupted and the IBS information about the sampled
-op is made available to the OS through a series of model-specific registers
-(MSRs).
+op is made available to the OS through a series of MSRs
 
 Depending on the process family, these Op IBS Samples can contain some or all
 of the following information:
