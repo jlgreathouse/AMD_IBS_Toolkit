@@ -5,10 +5,10 @@ This repository contains tools which can be used to access the Instruction Based
 
 This toolkit includes a Linux&reg; kernel driver that helps gather these IBS samples, a user-level application to parse the raw binary dumped by the driver, and a helper application which will run other programs and collect IBS traces about them.
 
-This toolkit was written by AMD Research as a simplified way to gather IBS samples on a wide range of Linux systems. Newer Linux kernels (Beginning in the 3.2 timeframe) have support for IBS as part of the perf\_events system. This toolkit offers a simplified interface to the IBS system, but it also includes a set of directions (ibs\_with\_perf\_events.txt) for implementing the same functionality the "official" way. In essence, this toolkit may be useful for prototyping a system that uses IBS, which can later be ported to use perf\_events.
+This toolkit was written by AMD Research as a simplified way to gather IBS samples on a wide range of Linux systems. Newer Linux kernels (Beginning in the 3.2 timeframe) have support for IBS as part of the perf\_events system. This toolkit offers a simplified interface to the IBS system, but it also includes a set of directions ([ibs\_with\_perf\_events.txt](ibs_with_perf_events.txt)) for implementing the same functionality the "official" way. In essence, this toolkit may be useful for prototyping a system that uses IBS, which can later be ported to use perf\_events.
 
 Table of Contents
-=================
+--------------------------------------------------------------------------------
 
    * [AMD Research IBS Toolkit File Structure](#amd-research-ibs-toolkit-file-structure)
       * [The AMD Research IBS Driver](#the-amd-research-ibs-driver)
@@ -199,7 +199,7 @@ The follow command will run both of the above commands back-to-back and also ann
 Background on Instruction Based Sampling
 --------------------------------------------------------------------------------
 
-AMD Instruction Based Sampling (IBS) is a hardware performance monitoring mechanism that is available on AMD CPUs starting with the Family 10h generation of cores (e.g. processors code-named "Barcelona" and "Shanghai" and Phenom&trade; II branded consumer CPUs were from this generation). It is supported on AMD CPUs up through and including the current Family 17h processors (e.g. the Ryzen-branded consumer CPUs) with various features in each generation.
+AMD Instruction Based Sampling (IBS) is a hardware performance monitoring mechanism that is available on AMD CPUs starting with the Family 10h generation of cores (e.g. processors code-named "Barcelona" and "Shanghai" and Phenom&trade; II branded consumer CPUs were from this generation). It is supported on AMD CPUs up through and including the current Family 17h processors (e.g. the Ryzen&trade; branded consumer CPUs) with various features in each generation.
 
 Traditionally, hardware performance counters increment whenever an event happens inside the CPU core. These events are counted whenever the core sees some event (such as a cache miss). This can lead to overcounting in cores that perform speculative, out-of-order execution, because the instruction that caused the event may never actually commit.
 
