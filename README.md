@@ -7,6 +7,24 @@ This toolkit includes a Linux&reg; kernel driver that helps gather these IBS sam
 
 This toolkit was written by AMD Research as a simplified way to gather IBS samples on a wide range of Linux systems. Newer Linux kernels (Beginning in the 3.2 timeframe) have support for IBS as part of the perf\_events system. This toolkit offers a simplified interface to the IBS system, but it also includes a set of directions (ibs\_with\_perf\_events.txt) for implementing the same functionality the "official" way. In essence, this toolkit may be useful for prototyping a system that uses IBS, which can later be ported to use perf\_events.
 
+Table of Contents
+=================
+
+   * [AMD Research IBS Toolkit File Structure](#amd-research-ibs-toolkit-file-structure)
+      * [The AMD Research IBS Driver](#the-amd-research-ibs-driver)
+      * [A library to configure IBS and read IBS samples](#a-library-to-configure-ibs-and-read-ibs-samples)
+      * [A collection of user-level tools to gather and analyze IBS samples](#a-collection-of-user-level-tools-to-gather-and-analyze-ibs-samples)
+         * [An application that tests the IBS driver](#an-application-that-tests-the-ibs-driver)
+         * [An IBS monitoring program](#an-ibs-monitoring-program)
+         * [An application to decode binary IBS dumps](#an-application-to-decode-binary-ibs-dumps)
+         * [An application to match IBS samples with their instructions](#an-application-to-match-ibs-samples-with-their-instructions)
+         * [An application that uses the libIBS daemon](#an-application-that-uses-the-libibs-daemon)
+   * [Building and Installing the AMD Research IBS Driver and Toolkit](#building-and-installing-the-amd-research-ibs-driver-and-toolkit)
+   * [AMD Research IBS Toolkit Compatibility](#amd-research-ibs-toolkit-compatibility)
+   * [Using the AMD Research IBS Toolkit](#using-the-amd-research-ibs-toolkit)
+   * [Background on Instruction Based Sampling](#background-on-instruction-based-sampling)
+   * [Trademark Attribution](#trademark-attribution)
+
 AMD Research IBS Toolkit File Structure
 --------------------------------------------------------------------------------
 
@@ -96,8 +114,8 @@ Note that, if you don't run this script with sudo, it will attept to install the
 After installing the driver, you should see IBS nodes in the file system at
 the following locations for each core ID <core\_id>:
 
-    1. /dev/cpu/<core\_id>/ibs/op
-    2. /dev/cpu/<core\_id>/ibs/fetch
+1. /dev/cpu/<core\_id>/ibs/op
+2. /dev/cpu/<core\_id>/ibs/fetch
 
 
 To uninstall the IBS driver, you can either run:
@@ -176,7 +194,7 @@ The following command will then decode the two IBS traces and save them into the
 
 The follow command will run both of the above commands back-to-back and also annotate each IBS sample with information about the instruction that it sampled (such as its opcode and which line of code created it):
 
-    ./tools/ibs_run_and_annotate/ibs_run_and_annotate -o -f -d ${output directory} -t ${temp directory}  -w ${program working directory} ${program command line}
+    ./tools/ibs_run_and_annotate/ibs_run_and_annotate -o -f -d ${output directory} -t ${temp directory} -w ${program working directory} ${program command line}
 
 Background on Instruction Based Sampling
 --------------------------------------------------------------------------------
@@ -237,7 +255,7 @@ Sampling, please refer AMD's various processor manuals: [5-17]
 6. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 15h Processors](https://support.amd.com/TechDocs/47414_15h_sw_opt_guide.pdf)". AMD Publication #47414. Rev. 3.07.  Appendix F.
 7. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 10h Processors](https://developer.amd.com/wordpress/media/2012/10/31116.pdf)". AMD Publication #31116. Rev. 3.62.
 8. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 12h Processors](https://support.amd.com/TechDocs/41131.pdf)". AMD Publication #41131. Rev. 3.03.
-9. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 14h Models 00h-0Fh Processors](BIOS and Kernel Developer's Guide (BKDG) For AMD Family 14h Models 00h-0Fh Processors)". AMD Publication #43170. Rev. 3.03.
+9. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 14h Models 00h-0Fh Processors](http://support.amd.com/TechDocs/43170_14h_Mod_00h-0Fh_BKDG.pdf)". AMD Publication #43170. Rev. 3.03.
 10. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 00h-0Fh Processors](http://support.amd.com/TechDocs/42301_15h_Mod_00h-0Fh_BKDG.pdf)". AMD Publication #42301. Rev. 3.14.
 11. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 10h-1Fh Processors](http://support.amd.com/TechDocs/42300_15h_Mod_10h-1Fh_BKDG.pdf)". AMD Publication #42300. Rev. 3.12.
 12. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 15h Models 30h-3Fh Processors](https://support.amd.com/TechDocs/49125_15h_Models_30h-3Fh_BKDG.pdf)". AMD Publication #49125. Rev. 3.06.
