@@ -3,7 +3,7 @@ AMD Research Instruction Based Sampling Toolkit
 
 This repository contains tools which can be used to access the Instruction Based Sampling (IBS) mechanism in AMD microprocessors from Families 10h, 12h, 15h, 16h, and 17h. IBS is a hardware mechanism that samples a subset of all of the instructions going through a processor. For each sampled instruction, a large amount of information is gathered and saved off as a program runs.
 
-This toolkit includes a Linux(r) kernel driver that helps gather these IBS samples, a user-level application to parse the raw binary dumped by the driver, and a helper application which will run other programs and collect IBS traces about them.
+This toolkit includes a Linux&reg; kernel driver that helps gather these IBS samples, a user-level application to parse the raw binary dumped by the driver, and a helper application which will run other programs and collect IBS traces about them.
 
 This toolkit was written by AMD Research as a simplified way to gather IBS samples on a wide range of Linux systems. Newer Linux kernels (Beginning in the 3.2 timeframe) have support for IBS as part of the perf\_events system. This toolkit offers a simplified interface to the IBS system, but it also includes a set of directions (ibs\_with\_perf\_events.txt) for implementing the same functionality the "official" way. In essence, this toolkit may be useful for prototyping a system that uses IBS, which can later be ported to use perf\_events.
 
@@ -11,41 +11,40 @@ AMD Research IBS Toolkit File Structure
 --------------------------------------------------------------------------------
 
 The AMD Research IBS Toolkit is split into three major pieces, each of which is licensed separately. These three pieces are:
-* The AMD Research IBS Driver located in ./driver/
-    - This is a Linux(r) kernel driver that allows access to IBS traces.
+* The AMD Research IBS Driver located in [./driver/](driver)
+    - This is a Linux&reg; kernel driver that allows access to IBS traces.
     - It is licensed under GPLv2, with the same caveats as any other Linux kernel license.
     - When installed, this will create two new devices per CPU core:
         1. /dev/cpu/<cpu\_id>/ibs/fetch
         2. /dev/cpu/<cpu\_id>/ibs/op
     - These two devices can be read using poll and read commands.
       In addition, there are a number if ioctl commands that can be used to configure and query information about the devices.
-    - The structs used by reads, and the ioctl commands, are defined in: ./include/ibs-uapi.h
-      A list of bit value locations from the AMD manuals that describe individual entries in each IBS reading are contained in: ./include/ibs-msr-index.h
-      These last two files are dual licensed. You can choose to use them under the GPLv2 or under a 3-clause BSD license.
-* A library to configure IBS and read IBS samples located in ./lib/
+    - The structs used by reads, and the ioctl commands, are defined in: [./include/ibs-uapi.h](include/ibs-uapi.h)
+    - A list of bit value locations from the AMD manuals that describe individual entries in each IBS reading are contained in: [./include/ibs-msr-index.h](include/ibs-msr-index.h)
+        - These last two files are dual licensed. You can choose to use them under the GPLv2 or under a 3-clause BSD license.
+* A library to configure IBS and read IBS samples located in [./lib/](lib)
     - This library allows user-level programs to easily configure the IBS driver. This includes enabling and disabling IBS, setting driver  options such as internal IBS buffer sizes, and setting HW config values.
     - This library is also useful for reading IBS samples into meaningful data structures and making them available to other applications.
     - This library also has a daemon mode, where a user program can launch an IBS-sample-reading daemon in the background that will dump IBS samples into a file while the regular program runs.
     - It is licensed under a 3-clause BSD license.
-* A collection of user tools to gather and analyze IBS samples in ./tools/
-    All of this software is licensed under a 3-clause BSD license
-    This collection of tools includes:
-    * An application that tests the IBS driver, located in ./tools/ibs\_test/
-        - This application checks to see if the AMD Research IBS Driver is installed and configurable. It attempts to open the op sampling device and read samples. It does nothing with these samples.
+* A collection of user tools to gather and analyze IBS samples in [./tools/](tools)
+    * All of this software is licensed under a 3-clause BSD license
+    * An application that tests the IBS driver, located in [./tools/ibs\_test/](tools/ibs_test)
+           - This application checks to see if the AMD Research IBS Driver is installed and configurable. It attempts to open the op sampling device and read samples. It does nothing with these samples.
         - The application takes one argument: the number of times to attempt to read IBS samples from the driver before quitting. This is set  by the optional argument to the application.
           0 or a negative value for this means "run until killed".
-    * An IBS monitoring program located in ./tools/ibs\_monitor/
+    * An IBS monitoring program located in [./tools/ibs\_monitor/](tools/ibs_monitor)
         - This application is a wrapper that enables IBS tracing in our driver, runs a target program, and saves off IBS traces into designated files until the target program ends. Afterwards, it disables IBS tracing.
         - Essentially, this gathers IBS traces for other programs.
-    * An application to decode binary IBS dumps in ./tools/ibs\_decoder/
+    * An application to decode binary IBS dumps in [./tools/ibs\_decoder/](tools/ibs_decoder)
         - By default, the ibs_monitor application will dump full IBS traces directly to files without doing any decoding on them. This is to prevent the decoding work from interrupting or slowing down the application under test.
         - The ibs_decoder application will read in these binary traces that are essentially dumps of the IBS sample data structures and split them into easy-to-read CSV files.
         - In addition, there is a script which will automatically convert these CSV files into R data structures, for further data analysis.
-    * An application to match IBS samples with their instructions in ./tools/ibs\_run\_and\_annotate/
+    * An application to match IBS samples with their instructions in [./tools/ibs\_run\_and\_annotate/](tools/ibs_run_and_annotate)
         - This application will run the IBS monitor and IBS decoder applications above on a target application. It will automatically run the target application, gather IBS traces, and decode them to a CSV file.
         - In addition, it will save enough information about the program's dynamically linked libraries to allow nearly all IBS samples to be "annotated" with the instruction that they represent. If the libraries and target application are built with debug symbols, this tool will also annotate the IBS samples with the line of code that produced the sampled instruction.
         - The end result of this run is a new annotated CSV file of IBS samples that also includes the source line of code, offset into the binary or library, AMD64 opcode of the instruction, and a human-readable version of the instruction.
-    * An application that uses the LibIBS daemon in ./tools/ibs\_daemon/
+    * An application that uses the LibIBS daemon in [./tools/ibs\_daemon/](tools/ibs_daemon)
         - This is an example of how to use the LibIBS daemon to handle IBS sampling within an application. The daemon will start up another thread that will dump IBS traces to a file in a user-defined way.
         - This application gathers a collection of op sample traces and dumps them to a small CSV file. It does this until the application ends.
         - This is somewhat similar to what the ibs_monitor application does, but this application demonstrates using the libIBS daemon and taking advantage of its ability to do user-defined handlers for IBS samples before spitting data out to a file.
