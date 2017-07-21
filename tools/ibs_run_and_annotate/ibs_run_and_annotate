@@ -1,0 +1,536 @@
+#!/usr/bin/env python
+# coding=utf-8
+#
+# Copyright (C) 2017 Advanced Micro Devices, Inc.
+
+# This file is distributed under the BSD license described in tools/LICENSE
+
+"""IBS Run and Annotate Tools
+This script will run an application and gather IBS op and/or fetch samples.
+It will then take those samples and annotate them with information about
+which instructions (and lines of code) were sampled.
+
+It does this by first asking the IBS monitor application (found in
+tools/ibs_monitor/) to save off dynamic library linkage when the
+application-under-test is started. This is done by using glibc's
+LD_DEBUG mechanism. This allows us to understand the base address and range
+of any dynamic libraries; IBS samples with an instruction pointer into that
+region of memory were from code in that dynamically linked library.
+
+This tool will then automatically perform this mapping of IBS samples to
+the x86 instruction (and line of code) that they represent, based on the
+IBS samples' instruction pointer. This is done with the 'objdump' utilty.
+Mapping IBS samples to instructions this way should almost always works;
+mapping IBS samples to lines of code will require the target application
+be built with with debug symbols.
+"""
+
+from __future__ import print_function
+from multiprocessing import cpu_count, Process
+from subprocess import Popen, PIPE
+from operator import itemgetter
+from bisect import bisect
+from time import time
+from tempfile import mkstemp
+from shutil import copyfileobj
+import csv
+import os
+import sys
+import argparse
+from joblib import Parallel, delayed
+
+# RIP_DICT is global dictionary. However
+# joblib.Parallel will fork #num_cores processes
+# which will each have its own copy of global RIP_DICT
+# We can't pass this into the job, because then the cache will
+# never actually be filled.
+RIP_DICT = {}
+VERBOSE = 0
+def vprint(msg):
+    """Print to the screen if running this script in VERBOSE mode"""
+    if VERBOSE:
+        print(msg)
+
+# Instruction lookup takes in a list of RIPs to look up.
+# This assumes that the list of library base+limits have already been put
+# into the global lib_base and lib_size Maps.
+def inst_lookup(line_buf, pid, lib_base, lib_size, poi, libs, fetch=False):
+    """Parallel worker thread that takes an input line from an IBS CSV file,
+    looks up the instruction pointer for each sample, and tries to find where
+    in the binary or libraries it was located (and which instruction it was).
+
+    It will ignore samples not from the target process, any samples from kernel
+    mode, and any fetch samples without valid physical addrsses.
+
+    It uses objdump to obtain this informatino; because calling a separate
+    process like objdump can be very slow, this function attempts to cache
+    any lookups it does, and actually prefetches onto future instructions
+    in an attempt to proactively fill up that cache.
+
+    Keyword arguments:
+    line_buf -- A list of strings that are the lines from the input CSV
+    pid -- The process ID of the process that is under analysis.
+	lib_base -- Map of all the library base addresses
+    lib_size -- Map of all the library lengths
+    poi -- Path to the program of interest
+    libs -- List of libraries, so that we can look up their names.
+    fetch -- Are these Fetch samples? (Default: False)
+    """
+
+    temp_file = mkstemp(suffix='.csv', prefix='ibs_merge_', text=True)
+    fout_name = temp_file[1]
+    fout = open(fout_name, 'w+')
+    csv_row_num = 0
+    for line in line_buf:
+        line_csv = line.split(",")
+
+        # The first line is the header. Ignore that.
+        if line_csv[0] == "TSC":
+            continue
+
+        csv_row_num += 1
+
+		# We must strip out any kernel-mode IBS samples, as well as any samples
+		# not from the PID we care about. For fetch addresses, if it doesn't
+        # have valid physical instruction address, then we do not care.
+        # Col 3 is PID
+        # Col 4 is kernel mode
+        # Col 5 is Phy_valid in fetch mode
+        if (int(line_csv[3]) == int(pid) and
+                int(line_csv[4]) == 0 and
+                ((not fetch) or (int(line_csv[5]) == 1))):
+            if fetch:
+                rip = int(line_csv[6], 16)
+            else:
+                rip = int(line_csv[5], 16)
+        else:
+            continue
+
+        # First, check to see if we have decoded this RIP before. If so, just
+        # pull it from the cache. This will make the decoding run faster.
+        input_csv = line.split(',')
+        if rip in RIP_DICT:
+            data_to_output = RIP_DICT[rip]
+        else:
+            # Check to see if this RIP was from a dynamically linked library.
+            lib_idx = bisect(lib_base, rip) - 1
+            if lib_idx < 0:
+                # Was in the program itself.
+                base_offset = 0
+                inst_offset = rip
+                obj_name = poi
+            elif rip < lib_base[lib_idx] + lib_size[lib_idx]:
+                # Was in a library.
+                base_offset = lib_base[lib_idx]
+                inst_offset = (rip - base_offset)
+                obj_name = libs[lib_idx][2]
+            else:
+                # No idea where it came from
+                if VERBOSE:
+                    sys.stderr.write('RIP {} not found.\n'.format(hex(rip)))
+                continue
+
+            # We use objdump to decode these instructions.
+            # Set width to 15, which is the longest legal AMD64 instruction.
+            # We start by trying to decode the actual RIP (or decode the offset
+            # of this RIP in the target library). We then try to decode another
+            # kB of instructions afterwards, to prefetch into our cache.
+            # We have a cache of decodes because calling objdump repeatedly for
+            # every instruction can lead to huge slowdowns.
+            cmd = ['objdump', '-dl', '--insn-width=15 '
+                   , '--start-address=' + hex(inst_offset)         \
+                   , '--stop-address=' + hex(inst_offset + 0x3ff)  \
+                   , obj_name                                      \
+                ]
+            proc = Popen(cmd, stdout=PIPE, universal_newlines=True)
+            out = proc.communicate()[0]
+            inst_idx_beg = out.find(hex(inst_offset)[2:] + ':')
+            # we tried objdump binary yet no inst found
+            if inst_idx_beg < 0:
+                if VERBOSE:
+                    sys.stderr.write("RIP in dynsym or rela.dyn " + hex(rip) + "\n")
+                continue
+            inst_idx_end = out.find('\n', inst_idx_beg) + 1
+            # dumping the above line that has source code info
+            source_idx_end = out.rfind('\n', 0, inst_idx_beg)
+            source_idx_beg = out.rfind('\n', 0, source_idx_end) + 1
+            source_info = out[source_idx_beg:source_idx_end-1]
+            inst = out[source_idx_end+1:inst_idx_end].lstrip().split('\t')
+            inst[0] = "0x" + inst[0].rstrip(':')
+            inst[1] = "0x" + inst[1].replace(' ', '')
+            if len(inst) > 2:
+                inst[2] = inst[2].lstrip().rstrip().replace(',', ' ')
+                inst[2] += ',\n'
+            else:
+                inst.append(',\n')
+            res = source_info + ',' + ','.join(inst)
+            RIP_DICT[rip] = res
+            data_to_output = res
+            # Everything down here is to add as many lines as possible into
+            # the translation cache. So we try to go through as many "extra"
+            # translations as possible. This is why we set the end address
+            # of the objdump as 0x3ff after our initial translation.
+            following_lines = out[inst_idx_end:].splitlines()
+            for line in following_lines:
+                presumable_addr = line[:line.find(':')]
+                if line.find("(bad)") != -1:
+                    # Some of the future translations of objdump will be bad
+                    # because objdump will assume that every future instruction
+                    # is forwarded decoded from our start address. If this
+                    # future instruction is not aligned with the initial
+                    # address, then the translation can come back as (bad).
+                    # Don't add that into the cache -- this is useless work.
+                    # We shouldn't see these unaligned addresses in the future.
+                    break
+                try:
+                    rip_in_block = base_offset + int(presumable_addr, 16)
+                    inst = line.split('\t')
+                    inst[0] = "0x" + inst[0].lstrip().rstrip(':')
+                    inst[1] = "0x" + inst[1].replace(' ', '')
+                    if len(inst) > 2:
+                        inst[2] = inst[2].lstrip().rstrip().replace(',', ' ')
+                        inst[2] += ',\n'
+                    else:
+                        # We should not see any lines with a "blank" decoding.
+                        # This normally happens when the instruction is longer
+                        # than the objdump insn-width. However, we should have
+                        # set that to the maximum x86 instruction width.
+                        # This might be a bad instruction, so don't cache it.
+                        break
+                    res = source_info + ',' + ','.join(inst)
+                    RIP_DICT[rip_in_block] = res
+                except ValueError:
+                    source_info = line[:-1]
+        fout_csv = csv.writer(fout)
+        input_csv.pop() # Kill the last "empty" cell in this CSV row.
+        # Check in correct PID, not-kern-mode, and PHY_VALID (if fetch)
+        split_new_data = data_to_output.split(',')
+        split_new_data.pop()
+        # Check to make sure the new data and CSV row_num are in sync
+        # The bottom 12 bits of the virtual, physical, and offset
+        # addresses should all be identical.
+        if not fetch and (int(input_csv[5], 16) & 0xfff != int(split_new_data[1], 16) & 0xfff):
+            sys.stderr.write("Error on IBS Op row " + str(csv_row_num) + "\n")
+            sys.stderr.write("Virtual address is " + str(input_csv[5]) + "\n")
+            sys.stderr.write("Offset address was calculated as " + str(split_new_data[1]) + "\n")
+            sys.stderr.write("The low 12 bits of these should be the same..." + "\n")
+            sys.exit("Desynchronized old and new data. Quitting.")
+        if fetch and (int(input_csv[6], 16) & 0xfff != int(split_new_data[1], 16) & 0xfff):
+            sys.stderr.write("Error on IBS Fetch row " + str(csv_row_num) + "\n")
+            sys.stderr.write("Virtual address is " + str(input_csv[5]) + "\n")
+            sys.stderr.write("Offset address was calculated as " + str(split_new_data[1]) + "\n")
+            sys.stderr.write("The low 12 bits of these should be the same..." + "\n")
+            sys.exit("Desynchronized old and new data. Quitting.")
+        fout_csv.writerow(input_csv + split_new_data)
+    fout.close()
+    return fout_name
+
+
+# dumpling the lib infos: path, base, size
+def read_ld_debug(ld_debug_file):
+    """This function reads information from a text file that was output by ld.so
+    based on the LD_DEBUG environment variable. This will allow our tool to
+    understand the path to any included libraries, the base address used during
+    this run of the application, and the size in memory of that loaded library.
+
+    Keyword arguments:
+    ld_debug_file -- path to the text file with LD_DEBUG outputs.
+    """
+    lib_list = []
+    with open(ld_debug_file, 'r') as fin:
+        pid_from_file = fin.readline().split(':')[0].strip()
+        lines = fin.readlines()
+        for i, line in enumerate(lines):
+            if 'base:' in line:
+                tmp = line.split()
+                lib_list.append((int(tmp[4], 16), int(tmp[6], 16),
+                                 lines[i - 3].split('=')[1].strip()))
+    # sort the libs based on their base addr
+    lib_list.sort(key=itemgetter(0))
+    vprint('Finished dumping library information.')
+    return lib_list, pid_from_file
+
+# Dump the CSV file into chunks of 2k rows so that we can process them
+# in parallel. This generator will yield a [list of row_strings]
+def dump_csv(samples_filename):
+    """Open a CSV file and create lists out of the lines.
+    This will yield multiple lists, each of which will have up to 2k lines
+    from the file in it. This allows us to process these lines in parallel.
+    """
+    row_buf = []
+    row_count = 0
+    with open(samples_filename, 'r') as fin:
+        for row in fin:
+            row_buf.append(row)
+            row_count = row_count + 1
+            if row_count % 0x800 == 0:
+                yield row_buf
+                row_buf = []
+                row_count = 0
+        if row_buf:
+            yield row_buf
+
+def write_csv(all_temp_files, in_csv_file, out_file):
+    """Write a final CSV file based on a large number of annotated IBS CSV
+    files that were created in parallel. This will also create the new
+    annotated header.
+    """
+    # We add four columns to the CSV's header
+    with open(in_csv_file, 'r') as fin:
+        first_line = fin.readline().split(',')
+    fin.close()
+    with open(out_file, 'w+') as fout:
+        fout_csv = csv.writer(fout)
+        first_line.pop() # kill the trailing newline
+        first_line.extend(['Source_Line', 'Binary_Offset', 'Opcode', 'Instruction'])
+        fout_csv.writerow(first_line)
+        for cat_file in all_temp_files:
+            copyfileobj(open(cat_file, 'r'), fout)
+            os.remove(cat_file)
+        fout.close()
+
+def parse_and_run_ibs():
+    """Parse the arguments for this script."""
+    parser = argparse.ArgumentParser(description='This tool will run an '
+                                     'application and gather IBS op and/or '
+                                     'fetch samples from it. It will then take '
+                                     'those samples and annotate them with '
+                                     'information about which instructions (and '
+                                     'lines of code) were sampled.',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-l', '--lookup', action='store_true',
+                        dest='lookup_only',
+                        help='Perform instruction lookup/parsing only. '\
+                        'Skip running the application and use existing IBS '\
+                        'traces instead. Will look for op_csv_name and '\
+                        'fetch_csv_name as inputs.')
+    parser.add_argument('-o', '--op_sample', action='store_true',
+                        dest='sample_op',
+                        help='Gather/annotate IBS op samples.')
+    parser.add_argument('-f', '--fetch_sample', action='store_true',
+                        dest='sample_ft',
+                        help='Gather/annotate IBS fetch samples.')
+    parser.add_argument('-t', '--temp_dir',
+                        default=os.path.abspath(os.getcwd()),
+                        help='Directory used to store the temporary IBS '\
+                        'trace files. This includes the raw IBS data '\
+                        'output from the monitor and the CSV files output '\
+                        'from the IBS decoder.')
+    parser.add_argument('--op_samples', default='ibs_op.dat',
+                        help='File used to store IBS op traces from the '\
+                        'monitor. This file will be stored into the TEMP_DIR '\
+                        'directory.')
+    parser.add_argument('--fetch_samples', default='ibs_fetch.dat',
+                        help='File used to store IBS fetch traces from the '\
+                        'monitor. This file will be stored into the TEMP_DIR '\
+                        'directory.')
+    parser.add_argument('--op_csv', default='ibs_op.csv',
+                        help='File used to hold decoded IBS op traces. '\
+                        'Will create/look for this file in the TEMP_DIR '\
+                        'directory.')
+    parser.add_argument('--fetch_csv', default='ibs_fetch.csv',
+                        help='File used to hold decoded IBS fetch traces. '\
+                        'Will create/look for this file in the TEMP_DIR '\
+                        'directory.')
+    parser.add_argument('--ld_debug_file', default='ld_debug.txt',
+                        help='File to hold the LD_DEBUG information about '\
+                        'the application, so that we can understand its '\
+                        'dynamic library locations. Will create/look for '\
+                        'this file in the TEMP_DIR directory.')
+    parser.add_argument('-d', '--out_dir',
+                        default=os.path.abspath(os.getcwd()),
+                        help='Directory used to store the tool output.')
+    parser.add_argument('--op_output', default='ibs_annotated_op.csv',
+                        help='File used to hold the annotated IBS op traces. '\
+                        'Will be created in the OUT_DIR directory.')
+    parser.add_argument('--fetch_output', default='ibs_annotated_fetch.csv',
+                        help='File used to hold the annotated IBS fetch '\
+                        'traces. Will be created in the OUT_DIR directory.')
+    parser.add_argument('-w', '--working_dir',
+                        default=os.path.abspath(os.getcwd()),
+                        help='Set the working directory for the program '\
+                        'under test.')
+    parser.add_argument('--timer', action='store_true',
+                        help='Time different sections of this runscript.')
+    parser.add_argument('command', nargs="+",
+                        help='Command to run program under test, or pointer '\
+                        'to the binary that was used to gather the CSV '\
+                        'files. This will be combined with WORKING_DIR if '\
+                        'the command is not an absolute path.')
+    args = parser.parse_args()
+
+    if not (args.sample_op or args.sample_ft):
+        print("Error! Neither IBS op nor IBS fetch samples were requested.")
+        parser.error('Select -o and/or -f to work on op and/or fetch samples')
+
+    # After parsing all the arguments, set up directory and file paths
+    ibs_tools_dir = os.path.join(os.path.dirname(__file__), "..")
+    op_sample_file = os.path.join(args.temp_dir, args.op_samples)
+    fetch_sample_file = os.path.join(args.temp_dir, args.fetch_samples)
+    op_csv_file = os.path.join(args.temp_dir, args.op_csv)
+    fetch_csv_file = os.path.join(args.temp_dir, args.fetch_csv)
+    ld_debug_file = os.path.join(args.temp_dir, args.ld_debug_file)
+    op_out_file = os.path.join(args.out_dir, args.op_output)
+    fetch_out_file = os.path.join(args.out_dir, args.fetch_output)
+
+    # The final thing parsed out is the application to run (and the rest
+    # of *its* arguments, optionally). Let's find the application and make
+    # a variable that holds its path. If the command line passed in is not
+    # an absolute path (or something like ~/foo.exe), then we try to find it
+    # in the directory pointed to by the --working_dir argument. If it's
+    # also not there, we fall back to checking the PATH environment vars.
+    prog = args.command
+    prog[0] = os.path.expanduser(prog[0])
+    prog[0] = os.path.expandvars(prog[0])
+    if os.path.isabs(prog[0]):
+        bench_file = prog[0]
+    else:
+        bench_file = os.path.join(args.working_dir, prog[0])
+
+    if not os.path.isfile(bench_file):
+        print("Error! Cannot find the desired benchmark file: " + bench_file)
+        sys.exit("Will not be able to properly decode the IBS trace data.")
+
+    if not args.lookup_only:
+        # Set up the command line to run the IBS monitoring application
+        ibs_monitor_bin = os.path.join(ibs_tools_dir, 'ibs_monitor/ibs_monitor')
+        if not os.path.isfile(ibs_monitor_bin):
+            print("Error! The IBS monitor application was not found.")
+            print("Have you run 'make' in the tools directory?")
+            print("    " + str(ibs_tools_dir))
+            sys.exit("Could not run requested commands.")
+        ibs_monitor_cmd = [ibs_monitor_bin, '-l', ld_debug_file]
+        if args.working_dir:
+            ibs_monitor_cmd += ['-w', args.working_dir]
+        if args.sample_op:
+            ibs_monitor_cmd += ['-o', op_sample_file]
+        if args.sample_ft:
+            ibs_monitor_cmd += ['-f', fetch_sample_file]
+        ibs_monitor_cmd += prog
+
+        # Set up the command to run the IBS decoding application
+        ibs_decoder_bin = os.path.join(ibs_tools_dir, 'ibs_decoder/ibs_decoder')
+        if not os.path.isfile(ibs_monitor_bin):
+            print("Error! The IBS monitor application was not found.")
+            print("Have you run 'make' in the tools directory?")
+            print("    " + str(ibs_tools_dir))
+            sys.exit("Could not run requested commands.")
+        ibs_decoder_cmd = [ibs_decoder_bin]
+        if args.sample_op:
+            ibs_decoder_cmd += ['-i', op_sample_file]
+            ibs_decoder_cmd += ['-o', op_csv_file]
+        if args.sample_ft:
+            ibs_decoder_cmd += ['-f', fetch_sample_file]
+            ibs_decoder_cmd += ['-g', fetch_csv_file]
+
+        # run IBS monitor and decoder with program of interest
+        print('IBS Tools Running Command: ' + ' '.join(prog))
+        print('    From directory: ' + str(args.working_dir))
+        try:
+            Popen(ibs_monitor_cmd).wait()
+            Popen(ibs_decoder_cmd).wait()
+        except OSError:
+            parser.error('IBS Tools not found!')
+    else:
+        # check if sample csv files exist
+        if args.sample_op and not os.path.exists(op_csv_file):
+            parser.error('IBS op samples specified, but CSV file '
+                         + op_csv_file + ' not found!')
+        if args.sample_ft and not os.path.exists(fetch_csv_file):
+            parser.error('IBS fetch samples specified, but CSV file '
+                         + fetch_csv_file + ' not found!')
+    return (bench_file, args.sample_op, args.sample_ft, op_csv_file,
+            fetch_csv_file, ld_debug_file, op_out_file, fetch_out_file,
+            args.timer)
+
+def main():
+    """Main function for this application"""
+    app_start_time = time()
+
+    # poi: program of interest
+    (poi, dump_op, dump_ft, op_csv_fn, fetch_csv_fn, ld_debug_fn,
+     op_out_fn, fetch_out_fn, timer) = parse_and_run_ibs()
+
+    annotate_start_time = time()
+
+    # Start by gathering information about the libraries that were dynamically
+    # linked when the application ran.
+    libs, pid_to_use = read_ld_debug(ld_debug_fn)
+    vprint('Dumping info for process {}'.format(pid_to_use))
+    lib_base = map(itemgetter(0), libs)
+    lib_size = map(itemgetter(1), libs)
+
+    # Next, split off parallel jobs to look up the IBS fetch or op samples
+    # within the application or its shared libraries.
+
+    num_cores = cpu_count()
+    vprint('Running IBS lookups in parallel with {} jobs'.format(num_cores))
+
+    dump_and_lookup_start_time = time()
+
+    if dump_op:
+        print("Beginning looking up instructions for IBS op samples...")
+        op_lookup_start_time = time()
+        op_res = Parallel(n_jobs=num_cores-1, pre_dispatch=('1.5*n_jobs'))(
+            delayed(inst_lookup)(line_buf, pid_to_use, lib_base, lib_size, poi, libs, False)
+            for line_buf in dump_csv(op_csv_fn))
+        op_lookup_done_time = time()
+        print("Done with IBS op lookups.")
+    if dump_ft:
+        proc = None
+        if dump_op:
+            # pipeline the final file write with fetch sample processing
+            proc = Process(target=write_csv,
+                           args=(op_res, op_csv_fn, op_out_fn))
+            proc.start()
+        print("Beginning looking up instructions for IBS fetch samples...")
+        fetch_lookup_start_time = time()
+        ft_res = Parallel(n_jobs=num_cores-1, pre_dispatch=('1.5*n_jobs'))(
+            delayed(inst_lookup)(line_buf, pid_to_use, lib_base, lib_size, poi, libs, True)
+            for line_buf in dump_csv(fetch_csv_fn))
+        fetch_lookup_done_time = time()
+        print("Done with IBS fetch lookups.")
+        write_csv(ft_res, fetch_csv_fn, fetch_out_fn)
+        fetch_write_done_time = time()
+        if proc is not None:
+            proc.join()
+    elif dump_op:
+        write_csv(op_res, op_csv_fn, op_out_fn)
+        op_write_done_time = time()
+
+    # If the user has requested timing information, print out all of the
+    # timers from across the application.
+    if timer:
+        end_time = time()
+        total_time = end_time - app_start_time
+        app_runtime = annotate_start_time - app_start_time
+        library_parse = dump_and_lookup_start_time - annotate_start_time
+        lookup_and_write = end_time - dump_and_lookup_start_time
+        print('IBS run and annotate time: ' + str(total_time) + " s")
+        print("\tApplication time: " + str(app_runtime) + " s")
+        print("\tParsing libraries time: " + str(library_parse) + " s")
+        print("\tAnnotate and CSV write time: " + str(lookup_and_write) + " s")
+        if dump_op:
+            op_lookup = op_lookup_done_time - op_lookup_start_time
+            print("\t\tIBS Op lookup time: " + str(op_lookup) + " s")
+            # The op write timer only exists if we are not doing fetch lookups.
+            # Otherwise, the fetch lookups and writing take place in parallel.
+            if not dump_ft:
+                op_write = op_write_done_time - op_lookup_done_time
+                print("\t\tIBS Op CSV write time: " + str(op_write) + " s")
+        if dump_ft:
+            fetch_lookup = fetch_lookup_done_time - fetch_lookup_start_time
+            fetch_write = fetch_write_done_time - fetch_lookup_done_time
+            if dump_op:
+                possible_op_write = (lookup_and_write - fetch_lookup -
+                                     fetch_write - op_lookup)
+                if possible_op_write > 0.5:
+                    print("\t\tIBS Op CSV write time: " +
+                          str(possible_op_write) + "s")
+                else:
+                    print("\t\tIBS Op CSV write time: 0 s (fully pipelined)")
+            print("\t\tIBS Fetch lookup time: " + str(fetch_lookup) + " s")
+            print("\t\tIBS Fetch CSV write time: " + str(fetch_write) + " s")
+
+if __name__ == '__main__':
+    main()

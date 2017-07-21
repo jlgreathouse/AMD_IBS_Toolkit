@@ -1,0 +1,437 @@
+Gathering IBS Samples Using the Linux(r) perf_events System
+===============================================================================
+
+This document describes the steps needed to collect Instruction Based Sampling
+(IBS) traces from AMD processors using the Linux(r) perf_events (a.k.a. 'perf')
+system and associated utilities. This document is included as part of AMD
+Research's IBS Toolkit; while the AMD Research IBS Toolkit contains its own
+driver that allows access to IBS samples, it is an unofficial mechanism that
+will not be mainlined.
+
+Official support for performance monitoring mechanisms like AMD IBS is offered
+as part of the Linux kernel's 'perf' infrastructure (frequently referred to as
+perf_events to make it easier to find with an internet search). IBS support
+was added in the Linux 3.2 timeframe. Because perf is an official part of the
+Linux kernel, any tools built to use IBS should strive to use it if they
+plan on being widely distributed.
+
+That said, the AMD Research IBS Toolkit is available for a number of research-
+related IBS development purposes:
+  * The AMD Research IBS Toolkit driver works on Linux kernels before v3.2,
+    when IBS support was officially added to perf_events. The earliest kernel
+    tested is a later CentOS version of 2.6.18 (2.6.18-419, specifically).
+  * Because the AMD Research IBS Toolkit driver is a module, it is easier
+    to make custom modifications (such as only gathering some IBS values
+    in the kernel to reduce overheads). In addition, it can be updated more
+    rapidly to enable IBS on new processors without upgrading the rest of
+    the kernel.
+  * The interface to the AMD Research IBS Toolkit driver may be somewhat
+    easier to navigate than the perf_events interface (though this file
+    is an attempt to ameliorate these difficulties). Thus this toolkit may
+    be useful for researchers who want to use IBS without becoming experts
+    on perf_events.
+
+That said, there are major benefits to using perf_events that should not be
+discounted:
+  * It is the official Linux mechanism for accessing IBS data. This point
+    should not be understated -- because perf_events is the Linux kernel's
+    mechanism for getting to IBS, drivers like those available in the
+    AMD Research IBS Toolkit will not be mainlined. As such, any software
+    you ship that uses IBS would likely want to use the perf_events
+    infrastructure rather than shipping this driver with your tool.
+  * Because perf_events is the official mechanism to access IBS in Linux,
+    AMD offers no claim of support or warranty for the AMD Research IBS
+    Toolkit. This toolkit is offered as a snapshot of things that researchers
+    in one organization of AMD have found useful; it may or may not be
+    updated as IBS mechanisms change, new processors are added, bugs are
+    found, or Linux kernel APIs change.
+  * The perf_events subsystem has all of the capabilities of the AMD
+    Research IBS Toolkit driver and more. Later in this document, we will
+    include a translation table from our driver's ioctl() commands to the
+    commands to do these things in perf_events. In addition, perf_events
+    has added capabilities, like time-multiplexing IBS samples between
+    separate processes (while this toolkit's IBS samples can only be
+    gathered system wide and must be post-processed to remove samples from
+    other processes).
+  * Using the perf_events subsystem to gather IBS traces also allows you to
+    take advantage of perf_events's user-land tools (such as 'perf'). These
+    can be used to map IBS samples onto processes, graph data about samples,
+    and many other useful performance-monitoring tasks. We have replicated
+    some of this functionality in the AMD Research IBS Toolkit, but we do
+    not have any plans to reach parity with this tooling (the goal with
+    our toolkit was, instead, to make prototyping new tooling in a research
+    setting somewhat easier).
+
+With these points in mind, our view of the AMD Research IBS Toolkit is as a
+research and prototyping platform. You can use it to bring up new hardware,
+try out new IBS sampling mechanisms, gather IBS samples for research
+projects, and quickly build new IBS-using tools. This document exists as a
+sort of Rosetta Stone for taking those tools and translating them to work
+on top of the official perf_events mechanisms once you want to release
+the tool for general use.
+
+This document is thus split into 6 parts:
+  1. A quick introduction to using Linux perf_events to obtain IBS samples
+  2. Directions for opening the perf_event file descriptor for IBS samples
+  3. How to map the kernel ring buffer in user land to obtain IBS samples
+  4. How to start IBS sample collection in perf_events
+  5. Collecting IBS samples out of the perf_events system
+  6. A map of AMD Research IBS Toolkit commands to their perf_event mirrors
+
+
+An introduction to obtaining IBS samples with the Linux(r) perf_events system
+===============================================================================
+The Linux(r) perf_events system (officially 'perf') is the name for both the
+kernel-level and user-level tools to gather hardware performance monitoring
+information in Linux. For general information about this system, please see
+the following websites:
+  * http://web.eece.maine.edu/~vweaver/projects/perf_events/
+  * http://www.brendangregg.com/perf.html
+  * https://perf.wiki.kernel.org/index.php/Main_Page
+
+In addition, a great deal of information about how to interface with the
+kernel perf infrastructure can be found in the manpage for perf_event_open.
+See, for example: http://man7.org/linux/man-pages/man2/perf_event_open.2.html
+
+The perf_events system can be used for a wide range of performance monitoring
+hardware, from generic performance counters to more advanced vendor-specific
+hardware. AMD's IBS support is one part of this, and this document only
+covers the information necessary to gather this data.
+
+At high level, there are six steps needed to gather IBS data from perf_events:
+  1. A file descriptor for an IBS event must be opened using perf_event_open()
+     system call with proper attributes.
+  2. Raw IBS samples are collected by the kernel in a kernel ring buffer.
+     Therefore, the user must mmap that ring buffer to user-land by calling
+     the mmap() system on the file descriptor for the IBS event.
+  3. The event must then be enabled to start collecting the samples. For
+     example, this could be done just before starting the execution of the
+     program which is to be monitored.
+     When IBS monitoring is on the samples are collected in the kernel ring
+     buffer by the Linux kernel.
+  4. Samples collected in the kernel ring buffer must be read to user space
+     for post-processing and/or parsing. This reading of the ring buffer can
+     also take place while more values are being added to the buffer.
+  5. Parsing the IBS samples.
+  6. Finally, when monitoring is finished, the event (IBS sampling) must be
+     disabled.
+
+The Linux perf_events system comes with several user-land utility functions
+that help users interact with perf's interface. While it is not strictly
+necessary to use them, they can be helpful in reducing the amount of effort
+needed to collect raw IBS samples.
+
+The following sections describe more details of these four steps of gathering
+IBS data from the perf_events system.
+
+
+Directions for opening the perf_event file descriptor for IBS samples
+===============================================================================
+The Linux(r) perf_events subsystem exposes a narrow interface to user land for
+performance monitoring. Specifically, any event that is to be monitored must
+open a file descriptor with perf_event_open() system call. The manpage for
+perf_event_open() contains a great deal of information about this interface,
+but this and the following sections primarily discuss how to use this interface
+to get IBS samples.
+
+The contents of the perf_event_attr structure passed as a parameter to the
+perf_event_open() system call determines which event should be monitored.
+The code snippet at the bottom of this section shows example content of various
+fields of this structure to enable IBS. Since IBS samples can be collected for
+micro-ops or for fetch samples (see this tool's README.txt for more
+information), there are two separate code snippets. The first shows example
+attribute values for IBS micro-op sampling, while the second shows the
+attribute values for IBS fetch sampling. 
+
+--------------------------------------------------------------------------
+Code snippet 1: perf_event_attr fields required for IBS op sampling
+--------------------------------------------------------------------------
+//Type comes from /sys/bus/event_source/devices/ibs_op/type
+type = 8;
+// Setting this bit in config enables sampling every sample_period ops.
+// Leaving it unset will take an IBS sample every sample_period cycles
+config = ((1ULL<<19);
+sample_period = 0x10; // Can be any value > 0x10
+sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_CPU;
+disabled = 1;
+inherit = 1;
+execlude_kernel = 0;
+exclude_user = 0;
+exclude_hv = 0;
+exclude_guest = 0;
+exclude_idle = 0;
+exclude_host = 0;
+pinned = 0;
+pecise_ip = 1;
+mmap = 1;
+comm = 1;
+task = 1;
+sample_id_all = 1;
+comm_exec = 1;
+read_format = 0;
+mmap_pages= 256; //This can be changed – user settable
+--------------------------------------------------------------------------
+
+--------------------------------------------------------------------------
+Code snippet 2: perf_event_attr fields required for IBS fetch sampling
+--------------------------------------------------------------------------
+//Type from /sys/bus/event_source/devices/ibs_fetch/type
+type = 9;
+// Set bit 57 to cause the low order bits of the sample period to randomize
+config = ((1ULL<<57);
+// Set the number of completed fetches between samples
+sample_period = 0x10; // Can be any value > 0x10
+sample_type = PERF_SAMPLE_RAW | PERF_SAMPLE_CPU;
+disabled = 1;
+inherit = 1;
+execlude_kernel = 0;
+exclude_user = 0;
+exclude_hv = 0;
+exclude_guest = 0;
+exclude_idle = 0;
+exclude_host = 0;                    
+pinned = 0; 
+pecise_ip = 1;
+mmap = 1;
+comm = 1;
+task = 1;
+sample_id_all = 1;
+comm_exec = 1;
+read_format = 0;
+mmap_pages= 256; //This can be changed – user settable
+--------------------------------------------------------------------------
+
+A few of the fields in these code snippets demand special attention.
+
+1. type
+    This identifies the event to be opened. To gather IBS fetch or op events,
+    the value in this field must be set to a dynamic value (and thus it can
+    change from system to system).
+    To gather IBS op samples, the value to set this to can be found in:
+    /sys/bus/event_source/devices/ibs_op/type
+    To gather IBS fetch samples, the value to set this to can be found in:
+    /sys/bus/event_source/devices/ibs_fetch/type.
+2. config
+    This field should be set according to the type of IBS monitoring
+    and the configuration MSR values the user wants.
+    For instance, the control MSR for IBS fetch (defined in the AMD BKDG
+    or PPR manuals -- MSRC001_1030) says bit 57 will cause the low 4 bits
+    of the fetch sample rate to be randomized by hardware. As such, setting
+    bit 57 of the config field will enable this feature.
+    Details of how this is used can be found in the Linux kernel source at:
+    arch/x86/events/amd/ibs.c
+3. sample_period
+    This field defines how often IBS samples are taken. IBS fetch and op
+    sampling is performed differently (as defined in AMD's manuals).
+    IBS fetch samples are taken once every sample_period completed fetches.
+    In other words, after sample_period fetches successfully send some bytes
+    to the decoder, the next fetch is taken as an IBS sample.
+    IBS op samples can either count the number of cycles since the last sample,
+    or they can be configured (with config bit 19) to count the number of
+    ops issued between each sample.
+    In either case, this field holds the number of {units} between each IBS
+    sample. For both IBS op and fetch sampling, the hardware will ignore
+    requests to set the low 4 bits -- as such, the user must set this field
+    to at least 0x10.
+4. sample_type
+    This is normally used to tell perf_events what type of samples to take.
+    Since we would like to collect RAW samples from IBS, set this to
+    PERF_SAMPLE_RAW | PERF_SAMPLE_CPU.
+5. mmap_pages
+    This parameter is used to set the size of the kernel ring buffer used to
+    hold the IBS samples. This must be a power of two. Setting this to a
+    lower values runs the risk of dropping some IBS samples before user-space
+    code can read them; increasing it takes more memory space.
+6. misc fields
+    Currently, the IBS mechanism in Linux's perf_events subsystem does not
+    allow exclude_kernel, exclude_host, exclude_guest, exclude_idle, exclude_hv
+    or exclude_idle. As such, these should be set to zero.
+
+While it is possible manually invoke the perf_event_open() system call with the
+attribute values mentioned above, the Linux perf_events subsystem comes with a
+collection of helpful utility functions to do this work as well.
+We suggest that a user can utilize perf_evsel__open() and perf_evfunction()
+functions. See the Linux source code in tools/perf/util/evsel.{h/c}. These
+functions are likely to be easier to use than directly calling
+perf_event_open(). They take the same perf_event attribute structures that are
+described above. 
+
+
+How to map the kernel ring buffer in user land to obtain IBS samples
+===============================================================================
+Once IBS sampling is configured (see above) and enabled (see below), the raw
+IBS samples will be collected into a kernel ring buffer (see "mmap_pages" above
+for how to set the size of this ring buffer).
+
+To access these samples from a user-land application, this kernel ring buffer
+must be mapped to user land. This could be done by mmap()-ing the file
+descriptor obtained by perf_event_open.
+
+The first page in the kernel buffer contains metadata. Thus the size of this
+mmap() needs to be equal to the size of kernel ring buffer set while opening
+the event (the value in the "mmap_pages" field in the attribute) + 1.
+
+However, there are utility functions to make life easier for the purpose as
+well. The relevant utility function is perf_evlist__mmap().
+(defined in the Linux(r) source code at tools/perf/util/evsel.h/c)
+
+
+How to start IBS sample collection in perf_events
+===============================================================================
+With the IBS sampling mechanism configured, and the storage location for the
+IBS samples mmap()-ed to allow your user-space application to read it, the next
+step is to enable IBS sampling through an ioctl() system call on the IBS file
+descriptor (returned from perf_event_open) with the command:
+PERF_EVENT_IOC_ENABLE
+
+However, as with other steps, there is a helper function to do this:
+perf_evlist__enable().
+After IBS sampling is enabled, the application to be monitored can be launched.
+
+
+Collecting IBS samples out of the perf_events system
+===============================================================================
+After the IBS sampling mechanism beings creating samples, the user should read
+them out of the ring buffer for processing. There are utility functions in
+perf to help with this: perf_evlist__mmap_read(). This helper function can be
+called in a loop (until it returns NULL) to read the raw samples out of the
+ring buffer once at a time. Another utility function,
+perf_evlist__mmap_consume(), should be called at the end of each iteration
+of this loop to update the head and tail pointers to the kernel ring buffer.
+
+Each call to the perf_evlist__mmap_read() returns an object of a union called
+perf_event (defined in the Linux(r) source code: tools/perf/util/event.h).
+When no more samples remain perf_evlist__mmap_read() returns NULL.
+
+Each raw perf_event sample can then be parsed using an utility function
+called perf_evlist__parse_sample(). This utility function takes a perf_event
+object returned by the perf_evlist__mmap_read() and parses it to structure
+perf_sample (defined tools/perf/util/event.h).
+
+
+Parsing raw IBS samples
+===============================================================================
+The perf_sample data structure will have a "void *raw_data" -- this points
+to a region of memory that contains the concatenated values from all of the
+IBS registers associated with this sample. Because this is a raw sample, it is
+the user's responsibility to parse this series of bytes and make sense of them.
+
+There are two places to look for this information: first, the BKDG or PPR
+manuals for your processor will define what the bytes within each register
+mean. For example, the PPR for Family 17h Model 01h (available at:
+https://support.amd.com/TechDocs/54945_PPR_Family_17h_Models_00h-0Fh.pdf) shows
+that bit 58 of MSRC001_1030 is whether this IBS op sample was an L2 cache miss.
+
+The raw_data pointer points to an array of all of the MSRs associated with
+this type of IBS sample. The number of registers stored, and the order they are
+stored in, depends both on the hardware in use as well as the version of the
+Linux(r) kernel in use at the time. The length of the raw_data array is
+available in the perf_sample field "raw_size".
+
+The order that these registers are stored depends on the function that stores
+the values into the raw_data, which can be found in the Linux IBS source
+code. As of Linux 4.11, this is located in the function perf_ibs_handle_irq()
+in the file arch/x86/events/amd/ibs.c. You can see each time one of the MSR
+values is read into "buf" -- this is the data available in the raw_data array.
+
+For example (all line numbers taken from Linux 4.11 ibs.c):
+Both IBS op and fetch samples begin by reading their configuration register
+(IBS_FETCH_CTL or IBS_OP_CTL) into the buffer (ibs.c:607).
+
+Then, in a loop at ibs.c:628, most of the remaining registers for this
+type of sample are read into the buffer. They are read in numerical order,
+starting from the register immediately after the CTL register, through
+the last register that all AMD processors that support IBS can use.
+The register numbers being iterated through can be found at:
+arch/x86/include/asm/msr-index.h lines 299-310.
+
+Finally, only some AMD processors support the branch target and OPDATA4 MSRs,
+so these are only stored out if the CPU supports them.
+
+
+Disabling IBS sampling
+===============================================================================
+Once the application is over (or you desire to stop taking IBS samples), the
+perf_events IBS sampling can be disabled using an ioctl() system call in a
+similar manner to enabling it: use the IOCTL command PERF_EVENT_IOC_DISABLE
+The utility function perf_evlist__disable() can be used instead.
+
+
+A map of AMD Research IBS Toolkit commands to their perf_event mirrors.
+===============================================================================
+The primary way to interact with the AMD Research IBS Toolkit driver is through
+ioctl() commands, which are defined in include/ibs-uapi.h. The AMD driver does
+not allow reads with mmap(), but instead allows polling and reading directly
+from a file descriptor.
+
+Perhaps most importantly, the AMD Research IBS Toolkit enables IBS on a
+per-processor basis (i.e. it is hardware oriented) rather than a per-process
+(i.e. software oriented) basis. As such, the file descriptors and ioctl()
+operations are associated with a CPU, and any process that runs on that CPU
+while IBS is enabled will have samples taken. It is the user's responsibility
+to look for samples of interest. The Linux(r) perf_events IBS sampling
+mechanism is per-process, and will follow that process as it migrates around
+cores.
+
+Because the mechanisms for interacting with these two IBS systems are somewhat
+different, this section describes a mapping between the AMD Research IBS
+Toolkit calls and the way to perform similar types of commands in the
+Linux(r) perf_events subsystem. This should help you port any user-land
+software that is initially designed to use the AMD Research IBS Toolkit
+to instead use perf_events.
+
+1. IBS Setup and Other ioctl() commands
+|      AMD Research IBS Toolkit        |           Linux perf_events           |
+--------------------------------------------------------------------------------
+| ioctl(IBS_ENABLE)                    | ioctl(PERF_EVENT_IOC_ENABLE)          |
+|                                      |   Plus the configuration described    |
+|                                      |   for perf_event_attr must be done.   |
+| ioctl(IBS_DISABLE)                   | ioctl(PERF_EVENT_IOC_DISABLE)         |
+| ioctl(SET_CUR_CNT)/ioctl(SET_CNT)    | Not used, always set to 0             |
+| ioctl(GET_CUR_CNT)/ioctl(GET_CNT)    | Not needed, value is always 0         |
+| ioctl(SET_MAX_CNT)                   | perf_event_attr.sample_period         |
+|                                      |   perf_events values are exact sample |
+|                                      |   rate; toolkit values are upper bits |
+|                                      |   only (ignoring bottom 4 bits)       |
+| ioctl(GET_MAX_CNT)                   | Not available (read perf_event_attr)  |
+| ioctl(SET_CNT_CTL)                   | perf_event_attr.config, set bit 19    |
+| ioctl(GET_CNT_CTL)                   | Not available (read perf_event_attr)  |
+| ioctl(SET_RAND_EN)                   | perf_event_attr.config set bit 57     |
+| ioctl(GET_RAND_EN)                   | Not available (read perf_event_attr)  |
+| ioctl(SET_BUFFER_SIZE)               | perf_event_attr.mmap_pages            |
+| ioctl(GET_BUFFER_SIZE)               | Not available (read perf_event_attr)  |
+| ioctl(SET_POLL_SIZE)                 | perf_event_attr.wakeup_events         |
+|                                      |   or perf_event_attr.wakeup_watermark |
+|                                      |   The latter is only in bytes.        |
+| ioctl(GET_POLL_SIZE)                 | Not available (read perf_event_attr)  |
+| ioctl(GET_LOST)                      | Not available                         |
+| ioctl(DEBUG_BUFFER)                  | Not available                         |
+| ioctl(RESET_BUFFER)                  | ioctl(PERF_EVENT_IOC_RESET)           | 
+| ioctl(FIONREAD)                      | Not available (not needead, read      |
+|                                      |   the mmapped region using            |
+|                                      |   perf_evlist_mmap_read() in a loop   |
+|                                      |   until it returns NULL.)             |
+--------------------------------------------------------------------------------
+
+2. Reading IBS samples
+|      AMD Research IBS Toolkit        |           Linux perf_events           |
+--------------------------------------------------------------------------------
+| fopen a core's IBS file for later    | perf_evlist__mmap() on evlist         |
+|   reading, from:                     |   containing IBS perf_event           |
+|   /dev/cpu/<core>/ibs/op             |                                       |
+|   /dev/cpu/<core>/ibs/fetch          |                                       |
+| fread from core's IBS open fd        | perf_evlist__mmap_read() on evlist    |
+| Poll until data is available using   | perf_evlist__poll() on evlist         |
+|  poll() or select() on fd from       |                                       |
+|  opening core's op or fetch file     |                                       |
+--------------------------------------------------------------------------------
+
+
+Trademark Attribution
+===============================================================================
+(c) 2017 Advanced Micro Devices, Inc. All rights reserved.
+AMD, the AMD Arrow logo, and combinations thereof are trademarks of
+Advanced Micro Devices, Inc. in the United States and/or other jurisdictions.
+Linux is a registered trademark of Linus Torvalds.
+Other names are for informational purposes only and may be trademarks of their
+respective owners.
