@@ -247,6 +247,7 @@ Depending on the process family, these Op IBS Samples can contain some or all of
 For more information about the technical details of AMD's Instruction Based
 Sampling, please refer AMD's various processor manuals: [5-17]
 
+### Background References ###
 1. S. V. Moore, "[A Comparison of Counting and Sampling Modes of Using Performance Monitoring Hardware](http://icl.cs.utk.edu/news_pub/submissions/icl-ut-02-01_perfmodels.pdf)," in Proc. of the Int'l Conf. on Computational Science-Part II (ICCS), 2002.
 2. J. Dean, J. Hicks, C. A. Waldspurger, W. E. Weihl, G. Chrysos, "[ProfileMe: Hardware Support for Instruction-Level Profiling on Out-of-Order Processors](https://doi.org/10.1109/MICRO.1997.645821)," in Proc. of the 30th IEEE/ACM Int'l Symp. on Microarchitecture (MICRO-30), 1997.
 3. P. J. Drongowski, "[Instruction-Based Sampling: A New Performance Analysis Technique for AMD Family 10h Processors](http://developer.amd.com/community/blog/article/instruction-based-sampling-a-new-performance-analysis-technique-for-amd-family-10h-processors/)," AMD Technical Report, 2007.
