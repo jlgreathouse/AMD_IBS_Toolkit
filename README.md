@@ -24,6 +24,7 @@ Table of Contents
    * [Using the AMD Research IBS Toolkit](#using-the-amd-research-ibs-toolkit)
    * [Background on Instruction Based Sampling](#background-on-instruction-based-sampling)
    * [Trademark Attribution](#trademark-attribution)
+      * [Background References](#background-references)
 
 AMD Research IBS Toolkit File Structure
 --------------------------------------------------------------------------------
