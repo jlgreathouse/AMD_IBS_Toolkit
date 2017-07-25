@@ -46,7 +46,7 @@ The AMD Research IBS Toolkit is split into three major pieces, each of which is 
 * Located in [./lib/](lib)
 * It is licensed under a [3-clause BSD license](lib/LICENSE).
 * This library allows user-level programs to easily configure the IBS driver.
-    - This includes enabling and disabling IBS, setting driver  options such as internal IBS buffer sizes, and setting HW config values.
+    - This includes enabling and disabling IBS, setting driver options such as internal IBS buffer sizes, and setting hardware configuration values.
 * This library is also useful for reading IBS samples into meaningful data structures and making them available to other applications.
 * This library also has a daemon mode, where a user program can launch an IBS-sample-reading daemon in the background that will dump IBS samples into a file while the regular program runs.
 
@@ -86,7 +86,7 @@ The AMD Research IBS Toolkit is split into three major pieces, each of which is 
 Building and Installing the AMD Research IBS Driver and Toolkit
 --------------------------------------------------------------------------------
 
-Everything in the AMD Research IBS Toolkit can be build from the main directory using the command:
+Everything in the AMD Research IBS Toolkit can be built from the main directory using the command:
 
     make
 
@@ -110,7 +110,7 @@ Before using any IBS-using tools, you should install the IBS driver that you hav
 
     ./driver/install_ibs_driver.sh
 
-Note that, if you don't run this script with sudo, it will attept to install the driver using a sudo command that will likely ask for your password. You may need to do this every time you boot the system, unless you add the ibs.ko module to your boot-time list of modules to load.
+Note that, if you don't run this script with sudo, it will attempt to install the driver using a sudo command that will likely ask for your password. You may need to do this every time you boot the system, unless you add the ibs.ko module to your boot-time list of modules to load.
 
 After installing the driver, you should see IBS nodes in the file system at
 the following locations for each core ID <core\_id>:
@@ -195,7 +195,7 @@ The following command will then decode the two IBS traces and save them into the
 
 The follow command will run both of the above commands back-to-back and also annotate each IBS sample with information about the instruction that it sampled (such as its opcode and which line of code created it):
 
-    ./tools/ibs_run_and_annotate/ibs_run_and_annotate -o -f -d ${output directory} -t ${temp directory} -w ${program working directory} ${program command line}
+    ./tools/ibs_run_and_annotate/ibs_run_and_annotate -o -f -d ${output directory} -t ${temp directory} -w ${program working directory} -- ${program command line}
 
 Background on Instruction Based Sampling
 --------------------------------------------------------------------------------

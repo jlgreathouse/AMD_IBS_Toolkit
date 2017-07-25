@@ -48,7 +48,8 @@ is licensed separately. These three pieces are:
 * A library to configure IBS and read IBS samples located in ./lib/
     - This library allows user-level programs to easily configure the IBS
       driver. This includes enabling and disabling IBS, setting driver
-      options such as internal IBS buffer sizes, and setting HW config values.
+      options such as internal IBS buffer sizes, and setting hardware
+      configuration values.
     - This library is also useful for reading IBS samples into meaningful
       data structures and making them available to other applications.
     - This library also has a daemon mode, where a user program can launch
@@ -114,7 +115,7 @@ is licensed separately. These three pieces are:
 Building and Installing the AMD Research IBS Driver and Toolkit
 --------------------------------------------------------------------------------
 
-Everything in the AMD Research IBS Toolkit can be build from the main directory
+Everything in the AMD Research IBS Toolkit can be built from the main directory
 using the command:
     make
 
@@ -141,7 +142,7 @@ Before using any IBS-using tools, you should install the IBS driver that you
 have built. There is a helper script in the ./driver/ directory for this:
     ./driver/install_ibs_driver.sh
 
-Note that, if you don't run this script with sudo, it will attept to install
+Note that, if you don't run this script with sudo, it will attempt to install
 the driver using a sudo command that will likely ask for your password.
 You may need to do this every time you boot the system, unless you add the
 ibs.ko module to your boot-time list of modules to load.
@@ -252,7 +253,7 @@ The follow command will run both of the above commands back-to-back and also
 annotate each IBS sample with information about the instruction that it
 sampled (such as its opcode and which line of code created it):
     ./tools/ibs_run_and_annotate/ibs_run_and_annotate -o -f -d ${out_dir} \
-        -w ${working_dir} ${program command line}
+        -w ${working_dir} -- ${program command line}
 
 TODO:
  1. We should add an application that wraps malloc(), free(), etc. This will
