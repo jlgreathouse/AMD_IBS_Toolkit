@@ -35,6 +35,10 @@
 #include <asm/apic.h>
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+#include <linux/cpuhotplug.h>
+#endif
+
 #include "ibs-fops.h"
 #include "ibs-interrupt.h"
 #include "ibs-msr-index.h"
@@ -73,6 +77,10 @@ static int ibs_rip_invalid_chk_supported = 0;
 static int ibs_op_brn_fuse_supported = 0;
 static int ibs_fetch_ctl_extd_supported = 0;
 static int ibs_op_data4_supported = 0;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+static int ibs_hotplug_notifier;
+#endif
 
 /* Family 10h Erratum #420: Instruction-Based Sampling Engine May Generate
  * Interrupt that Cannot Be Cleared */
@@ -204,7 +212,69 @@ static void ibs_device_destroy(int flavor, int cpu)
 	device_destroy(ibs_class, MKDEV(ibs_major, IBS_MINOR(flavor, cpu)));
 }
 
-/* Mention that this has not been tested */
+/* When we're about to bring a CPU online, we need to create the fetch and op
+   devices for it. We create these when onlining and remove them when offlining
+   because this driver may be removed while the CPU is down, and we don't want
+   to lose any of the data structures or workaround state while we can't
+   talk to the CPU */
+static int ibs_prepare_up(unsigned int cpu)
+{
+	int err = 0;
+	pr_info("IBS: Creating IBS devices on core %u\n", cpu);
+	err = ibs_device_create(IBS_OP, cpu);
+	if (err)
+		return err;
+	err = ibs_device_create(IBS_FETCH, cpu);
+	if (err)
+		ibs_device_destroy(IBS_OP, cpu);
+	return err;
+}
+
+/* Once the CPU is actually online and we can talk to it/run code on it,
+   set up its LVT and do any core-specific workarounds that change CPU state */
+static int ibs_online_up(unsigned int cpu)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	ibs_prepare_up(cpu);
+#endif
+	pr_info("IBS: Bringing up IBS on core %u\n", cpu);
+	ibs_setup_lvt(NULL);
+	if(workaround_fam17h_m01h)
+		start_fam17h_m01h_static_workaround(cpu);
+	return 0;
+}
+
+/* CPU is actually offline at this point, so just destroy its data structs. */
+static int ibs_down(unsigned int cpu)
+{
+	pr_info("IBS: Core %u is down\n", cpu);
+	if (ibs_op_supported)
+		ibs_device_destroy(IBS_OP, cpu);
+	if (ibs_fetch_supported)
+		ibs_device_destroy(IBS_FETCH, cpu);
+	return 0;
+}
+
+/* When we're about to take a CPU offline and we won't be able to run any code
+   on it. As such, we must remove any CPU state-changing workarounds that might
+   be forgotten if this driver is removed while the core is down. Also remove
+   any IBS interrupt-causing bits so that we don't get unhandled interrupts. */
+static int ibs_prepare_down(unsigned int cpu)
+{
+	pr_info("IBS: Starting to take down core %u\n", cpu);
+	disable_ibs_op_on_cpu(per_cpu_ptr(pcpu_op_dev, cpu), cpu);
+	disable_ibs_fetch_on_cpu(per_cpu_ptr(pcpu_fetch_dev, cpu), cpu);
+	if (workaround_fam17h_m01h)
+		stop_fam17h_m01h_static_workaround(cpu);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	ibs_down(cpu);
+#endif
+	return 0;
+}
+
+/* After 4.10.0, we directly call the above helper functions from the
+   cpuhp_setup_state machine. No need to setup this generic callback */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 static int ibs_class_cpu_callback(struct notifier_block *nfb,
 				unsigned long action, void *hcpu)
 {
@@ -213,30 +283,18 @@ static int ibs_class_cpu_callback(struct notifier_block *nfb,
 
 	switch (action) {
 	case CPU_UP_PREPARE:
-		err = ibs_device_create(IBS_OP, cpu);
-		if (err)
-			break;
-		err = ibs_device_create(IBS_FETCH, cpu);
-		if (err)
-			ibs_device_destroy(IBS_OP, cpu);
+		err = ibs_prepare_up(cpu);
 		break;
 	case CPU_ONLINE:
-		ibs_setup_lvt(NULL);
-		if(workaround_fam17h_m01h)
-			start_fam17h_m01h_static_workaround(cpu);
+		ibs_online_up(cpu);
 		break;
 	case CPU_UP_CANCELED:
 	case CPU_UP_CANCELED_FROZEN:
 	case CPU_DEAD:
-		ibs_device_destroy(IBS_OP, cpu);
-		ibs_device_destroy(IBS_FETCH, cpu);
+		ibs_down(cpu);
 		break;
 	case CPU_DOWN_PREPARE:
-		pr_info("IBS: Trying to kill core: %u\n", cpu);
-		disable_ibs_op_on_cpu(per_cpu_ptr(pcpu_op_dev, cpu), cpu);
-		disable_ibs_fetch_on_cpu(per_cpu_ptr(pcpu_fetch_dev, cpu), cpu);
-		if (workaround_fam17h_m01h)
-			stop_fam17h_m01h_static_workaround(cpu);
+		ibs_prepare_down(cpu);
 		break;
 	}
 	return notifier_from_errno(err);
@@ -249,6 +307,7 @@ static struct notifier_block ibs_class_cpu_notifier = {
 #endif
 	.notifier_call = ibs_class_cpu_callback,
 };
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
 static char *ibs_devnode(struct device *dev, 
@@ -269,8 +328,8 @@ mode_t *mode
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
 static int ibs_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
-    add_uevent_var(env, "DEVMODE=%#o", 0666);
-    return 0;
+	add_uevent_var(env, "DEVMODE=%#o", 0666);
+	return 0;
 }
 #endif
 
@@ -296,14 +355,14 @@ static int check_for_ibs_support(void)
 
 	if (c->x86 == 0x10)
 	{
-		pr_info("IBS Startup: Enabling workaround for "
+		pr_info("IBS: Startup enabling workaround for "
 			"Family 10h Errata 420\n");
 		workaround_fam10h_err_420 = 1;
 	}
 
 	if (c->x86 == 0x15 && c->x86_model <= 0x1f)
 	{
-		pr_info("IBS Startup: Enabling workaround for "
+		pr_info("IBS: Startup enabling workaround for "
 			"Family 15h Models 00h-1Fh Errata 718\n");
 		workaround_fam15h_err_718 = 1;
 	}
@@ -315,7 +374,7 @@ static int check_for_ibs_support(void)
 		if (c->x86 == 0x17 && c->x86_model == 0x1)
 		{
 			unsigned int cpu;
-			pr_info("IBS Startup: Enabling workaround for "
+			pr_info("IBS: Startup enabling workaround for "
 				"Family 17h Model 01h\n");
 			workaround_fam17h_m01h = 1;
 			for_each_online_cpu(cpu) {
@@ -331,8 +390,8 @@ static int check_for_ibs_support(void)
 
 	if (workaround_fam17h_m01h)
 	{
-		pr_info("This workaround may slow down your processor.\n");
-		pr_info("Unload the IBS driver if you want max performance.\n");
+		pr_info("IBS: This workaround may slow down your processor.\n");
+		pr_info("IBS: Unload IBS driver to maximize performance.\n");
 	}
 
 	/* If we are here, time to check the IBS capability flags for
@@ -345,7 +404,7 @@ static int check_for_ibs_support(void)
 		pr_err("CPUID_Fn8000_001B indicates no IBS support.\n");
 		return -EINVAL;
 	}
-	/* Now check to see if we support Op or Fetch sampling. If neither, die */
+	/* Now check support for Op or Fetch sampling. If neither, die. */
 	ibs_fetch_supported = feature_id & (1 << 1);
 	/* Op count is more complicated. We want all of its features in this
 	 * driver, so or them all together */
@@ -368,6 +427,64 @@ static int check_for_ibs_support(void)
 	return 0;
 }
 
+static void destroy_ibs_class(void)
+{
+	class_destroy(ibs_class);
+}
+
+static void destroy_ibs_devices(void)
+{
+	unsigned int cpu;
+	for_each_online_cpu(cpu) {
+		if (ibs_op_supported)
+			ibs_device_destroy(IBS_OP, cpu);
+		if (ibs_fetch_supported)
+			ibs_device_destroy(IBS_FETCH, cpu);
+	}
+}
+
+static void destroy_ibs_hotplug(void)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	get_online_cpus();
+	cpuhp_remove_state(ibs_hotplug_notifier);
+	put_online_cpus();
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+	cpu_notifier_register_begin();
+	__unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
+	cpu_notifier_register_done();
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
+	get_online_cpus();
+	unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
+	put_online_cpus();
+#else
+	unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
+#endif
+}
+
+static void unregister_ibs_chrdev(void)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
+	__unregister_chrdev(ibs_major, 0, NR_CPUS, "cpu/ibs");
+#else
+	unregister_chrdev(ibs_major, "cpu/ibs");
+#endif
+}
+
+static void destroy_ibs_cpu_structs(void)
+{
+	unsigned int cpu;
+	for_each_possible_cpu(cpu) {
+		free_ibs_buffer(per_cpu_ptr(pcpu_fetch_dev, cpu));
+		free_ibs_buffer(per_cpu_ptr(pcpu_op_dev, cpu));
+		if (workaround_fam17h_m01h)
+			stop_fam17h_m01h_static_workaround(cpu);
+	}
+	free_percpu(pcpu_fetch_dev);
+	free_percpu(pcpu_op_dev);
+	free_workaround_structs();
+}
+
 static __init int ibs_init(void)
 {
 	int err = 0;
@@ -377,7 +494,7 @@ static __init int ibs_init(void)
 	if (err < 0)
 		goto out;
 
-	pr_info("Initializing IBS module\n");
+	pr_info("IBS: Initializing IBS module\n");
 
 	pcpu_op_dev = alloc_percpu(struct ibs_dev);
 	if (!pcpu_op_dev)
@@ -391,7 +508,7 @@ static __init int ibs_init(void)
 		free_percpu(pcpu_op_dev);
 		free_percpu(pcpu_fetch_dev);
 err_metadata:
-		pr_err("Failed to allocate space for IBS device metadata; exiting\n");
+		pr_err("Failed to allocate IBS device metadata; exiting\n");
 		err = -ENOMEM;
 		goto out;
 	}
@@ -407,8 +524,8 @@ err_metadata:
 					IBS_FETCH_BUFFER_SIZE);
 		if (err) {
 err_buffers:
-			pr_err("CPU %d failed to allocate IBS device buffer; exiting\n",
-				cpu);
+			pr_err("CPU %d failed to allocate IBS device buffer; "
+				    "exiting\n", cpu);
 			goto out_buffers;
 		}
 		init_workaround_initialize();
@@ -423,7 +540,7 @@ err_buffers:
 		pr_err("Failed to get IBS device number; exiting\n");
 		goto out_buffers;
 	}
-	
+
 	ibs_class = class_create(THIS_MODULE, "ibs");
 	if (IS_ERR(ibs_class)) {
 		err = PTR_ERR(ibs_class);
@@ -437,11 +554,20 @@ err_buffers:
 	ibs_class->dev_uevent = ibs_uevent;
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+	/* Kernel versions older than 4.10 require some in-kernel locking
+	   around registering the hotplug notifier, or they could eadlock.
+	   See: https://patchwork.kernel.org/patch/3805711/ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	/* 4.10 says just to use get_online_cpus()s, see the Dec. 2016 version
+	  https://www.kernel.org/doc/html/v4.11/core-api/cpu_hotplug.html */
+	get_online_cpus();
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+	/* 3.15 introduced cpu_notifier_register_begin() for this. */
 	cpu_notifier_register_begin();
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
 	get_online_cpus();
 #endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
 	on_each_cpu(ibs_setup_lvt, NULL, 1);
 #else
@@ -457,7 +583,19 @@ err_buffers:
 		if (err != 0)
 			goto out_class;
 	}
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+
+	/* After setting up the current CPUs' data structures, we register the
+	   notifier for them. This changes depending on the kernel version */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	/* We currently set up everything on CPUHP_AP_ONLINE_DYN because it's
+	   likely that we are not the first device on this chain. Current
+	   kernels have a bug where, if you are the first device on a DYN
+	   notifier chain, your removal from that chain will fail. See:
+	   https://lkml.org/lkml/2017/7/5/574 */
+	ibs_hotplug_notifier = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+			"cpu/ibs:online", ibs_online_up, ibs_prepare_down);
+	put_online_cpus();
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
 	__register_hotcpu_notifier(&ibs_class_cpu_notifier);
 	cpu_notifier_register_done();
 #else
@@ -481,91 +619,36 @@ err_buffers:
 	goto out;
 
 out_device:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
-	cpu_notifier_register_begin();
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
-	get_online_cpus();
-#endif
+	destroy_ibs_devices();
 out_class:
-	for_each_online_cpu(cpu) {
-		ibs_device_destroy(IBS_OP, cpu);
-		ibs_device_destroy(IBS_FETCH, cpu);
-	}
-	class_destroy(ibs_class);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
-	__unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
-	cpu_notifier_register_done();
-#else
-	unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
-	put_online_cpus();
-#endif
-#endif
+	destroy_ibs_hotplug();
 out_chrdev:
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
-	__unregister_chrdev(ibs_major, 0, NR_CPUS, "cpu/ibs");
-#else
-	unregister_chrdev(ibs_major, "cpu/ibs");
-#endif
+	unregister_ibs_chrdev();
 out_buffers:
-	for_each_possible_cpu(cpu) {
-		free_ibs_buffer(per_cpu_ptr(pcpu_fetch_dev, cpu));
-		free_ibs_buffer(per_cpu_ptr(pcpu_op_dev, cpu));
-	}
-	free_percpu(pcpu_fetch_dev);
-	free_percpu(pcpu_op_dev);
+	destroy_ibs_cpu_structs();
 out:
 	return err;
 }
 
 static __exit void ibs_exit(void)
 {
-	unsigned int cpu;
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,2,0)
 	unregister_nmi_handler(NMI_LOCAL, "ibs_op");
 #else
 	unregister_die_notifier(&handle_ibs_nmi_notifier);
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
-	cpu_notifier_register_begin();
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
-	get_online_cpus();
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,10,0)
+	/* We only need to do this on older kernels -- the CPU hotplug destroyer
+	   will call into the per-device destroy functions on newer kernels */
+	destroy_ibs_devices();
 #endif
-	for_each_online_cpu(cpu) {
-		if (ibs_op_supported)
-			ibs_device_destroy(IBS_OP, cpu);
-		if (ibs_fetch_supported)
-			ibs_device_destroy(IBS_FETCH, cpu);
-	}
-	class_destroy(ibs_class);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
-	__unregister_chrdev(ibs_major, 0, NR_CPUS, "cpu/ibs");
-#else
-	unregister_chrdev(ibs_major, "cpu/ibs");
-#endif
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
-	__unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
-	cpu_notifier_register_done();
-#else
-	unregister_hotcpu_notifier(&ibs_class_cpu_notifier);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
-	put_online_cpus();
-#endif
-#endif
+	destroy_ibs_hotplug();
+	unregister_ibs_chrdev();
+	destroy_ibs_cpu_structs();
+	destroy_ibs_class();
 
-	for_each_possible_cpu(cpu) {
-		free_ibs_buffer(per_cpu_ptr(pcpu_fetch_dev, cpu));
-		free_ibs_buffer(per_cpu_ptr(pcpu_op_dev, cpu));
-		if (workaround_fam17h_m01h)
-			stop_fam17h_m01h_static_workaround(cpu);
-	}
-	free_percpu(pcpu_fetch_dev);
-	free_percpu(pcpu_op_dev);
-	free_workaround_structs();
-
-	pr_info("Exited ibs module\n");
+	pr_info("IBS: exited IBS module\n");
 }
 
 module_init(ibs_init);
