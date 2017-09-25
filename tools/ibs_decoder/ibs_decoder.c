@@ -479,6 +479,7 @@ void output_op_entry(FILE *outf, ibs_op_t op, uint32_t family,
                         fprintf(outf, "Reserved-%" PRIu8 ",",
                                 op.op_data2.reg.ibs_nb_req_src);
                     }
+                    break;
                 case 2:
                     fprintf(outf, "other_core_cache,");
                     break;
