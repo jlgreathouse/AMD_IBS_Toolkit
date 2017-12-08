@@ -16,6 +16,7 @@
 #include <linux/version.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
+#include <linux/irq_work.h>
 /* If possible, we want to wake up clients that are poll()ing on reads in
  * a bottom-half work queue. That's what this does. */
 void handle_ibs_work(struct irq_work *w);
