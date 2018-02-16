@@ -516,7 +516,7 @@ char **update_environment(void)
     uint64_t total_envvar = 0;
 
     int ld_debug_exists = 0;
-    while (environ[total_envvar] != '\0')
+    while (*environ[total_envvar] != '\0')
     {
         // If LD_DEBUG or LD_DEBUG_OUTPUT are already set, we need to give
         // up, because we don't want to overwrite the user's desired
