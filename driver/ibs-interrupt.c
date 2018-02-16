@@ -159,6 +159,7 @@ static inline void handle_ibs_op_event(struct pt_regs *regs)
 	struct ibs_op *sample;
 	u64 tmp;
 
+	/* See do_fam10h_workaround_420() definition for details */
 	rdmsrl(MSR_IBS_OP_CTL, tmp);
 	if (!dev->workaround_fam10h_err_420 && !(tmp & IBS_OP_MAX_CNT_OLD))
 		return;
@@ -170,6 +171,9 @@ static inline void handle_ibs_op_event(struct pt_regs *regs)
 	sample = (struct ibs_op *)(dev->buf + (old_wr * dev->entry_size));
 
 	collect_op_data(dev, sample);
+	
+	/* Logically this is part of collect_common_data. However we can save
+	 * a MSR access beacause we already read the MSr_ibs_op_ctl */
 	sample->op_ctl = tmp;
 	collect_common_data(sample);
 
