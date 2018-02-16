@@ -119,8 +119,8 @@ void parse_args(int argc, char *argv[])
     char c;
     while ((c = getopt_long(argc, argv, "+hi:o:f:g:", longopts, NULL)) != -1)
     {
+        fprintf(stderr, "Found: %s : %c\n", argv[optind], c);
         switch (c) {
-            fprintf(stderr, "Found: %s : %c\n", argv[optind], c);
             case 'h':
             case '?':
                 fprintf(stderr, "This program parses IBS traces from the AMD Research IBS monitor.\n");
