@@ -357,6 +357,6 @@ void do_fam10h_workaround_420(const int cpu)
 {
 	__u64 old_op_ctl;
 	rdmsrl(MSR_IBS_OP_CTL, old_op_ctl);
-	old_op_ctl &= (~ IBS_OP_MAX_CNT_OLD);
+	old_op_ctl = (old_op_ctl | IBS_OP_VAL) & (~ IBS_OP_MAX_CNT_OLD);
 	custom_wrmsrl_on_cpu(cpu, MSR_IBS_OP_CTL, old_op_ctl);
 }
