@@ -357,6 +357,21 @@ void do_fam10h_workaround_420(const int cpu)
 {
 	__u64 old_op_ctl;
 	rdmsrl(MSR_IBS_OP_CTL, old_op_ctl);
-	old_op_ctl &= (~ IBS_OP_MAX_CNT_OLD);
+	
+	/* Within the two writes provided by the workaround an interrupt may
+	 * occur, but the driver could not understand it is intended
+	 * for ibs and leaves it unhandled. This would result in an unknown NMI.
+	 * Mostly this is not a problem, but in some systems, there may
+	 * be some mechanism such as the NMI watchdog which catches the interrupt 
+	 * and does operations (even system reboot) thinking it is due to 
+	 * an unexpected hardware behaviour. 
+	 * To tackle such a problem, we set the IBS_OP_VAL bit so that, if
+	 * an interrupt is generated because of the first write the driver can catch
+	 * it. The driver gets this is a workaround side effect when looking at the 
+	 * IBS_OP_CTL and sees the IBS_OP_VAL bit set and the IBS_OP_MAX_CNT(_OLD)
+	 * is equal to 0. In that case, the driver informs the system the interrupt
+	 * has been handled, but it doesn't restart the ibs logic. The last write
+	 * resets the IBS_OP_CTL. */  
+	old_op_ctl = (old_op_ctl | IBS_OP_VAL) & (~ IBS_OP_MAX_CNT_OLD);
 	custom_wrmsrl_on_cpu(cpu, MSR_IBS_OP_CTL, old_op_ctl);
 }
