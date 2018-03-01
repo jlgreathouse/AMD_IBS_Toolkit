@@ -103,7 +103,6 @@ static inline void enable_ibs_fetch(const u64 fetch_ctl)
  */
 static inline void collect_op_data(struct ibs_dev *dev, struct ibs_op *sample)
 {
-	// rdmsrl(MSR_IBS_OP_CTL, sample->op_ctl);
 	rdmsrl(MSR_IBS_OP_RIP, sample->op_rip);
 	rdmsrl(MSR_IBS_OP_DATA, sample->op_data);
 	rdmsrl(MSR_IBS_OP_DATA2, sample->op_data2);
@@ -161,7 +160,7 @@ static inline void handle_ibs_op_event(struct pt_regs *regs)
 
 	/* See do_fam10h_workaround_420() definition for details */
 	rdmsrl(MSR_IBS_OP_CTL, tmp);
-	if (!dev->workaround_fam10h_err_420 && !(tmp & IBS_OP_MAX_CNT_OLD))
+	if (dev->workaround_fam10h_err_420 && !(tmp & IBS_OP_MAX_CNT_OLD))
 		return;
 
 	if (new_wr == atomic_long_read(&dev->rd)) {	/* Full buffer */
@@ -173,7 +172,7 @@ static inline void handle_ibs_op_event(struct pt_regs *regs)
 	collect_op_data(dev, sample);
 	
 	/* Logically this is part of collect_common_data. However we can save
-	 * a MSR access beacause we already read the MSr_ibs_op_ctl */
+	 * an MSR access beacause we already read the MSR_IBS_OP_CTL */
 	sample->op_ctl = tmp;
 	collect_common_data(sample);
 
