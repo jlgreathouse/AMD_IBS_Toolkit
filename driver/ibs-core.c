@@ -195,7 +195,8 @@ static int ibs_device_create(int flavor, int cpu)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
 	dev = device_create(ibs_class, NULL,
 			MKDEV(ibs_major, IBS_MINOR(flavor, cpu)), NULL,
-			"ibs_%s%u", flavor == IBS_OP ? "op" : "fetch", cpu);
+			"ibs_%s_%u",
+			flavor == IBS_OP ? "op" : "fetch", cpu);
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
 	dev = device_create(ibs_class, NULL,
 			MKDEV(ibs_major, IBS_MINOR(flavor, cpu)),
@@ -224,12 +225,18 @@ static int ibs_prepare_up(unsigned int cpu)
 {
 	int err = 0;
 	pr_info("IBS: Creating IBS devices on core %u\n", cpu);
-	err = ibs_device_create(IBS_OP, cpu);
-	if (err)
-		return err;
-	err = ibs_device_create(IBS_FETCH, cpu);
-	if (err)
-		ibs_device_destroy(IBS_OP, cpu);
+	if (ibs_op_supported)
+	{
+		err = ibs_device_create(IBS_OP, cpu);
+		if (err)
+			return err;
+	}
+	if (ibs_fetch_supported)
+	{
+		err = ibs_device_create(IBS_FETCH, cpu);
+		if (err && ibs_op_supported)
+			ibs_device_destroy(IBS_OP, cpu);
+	}
 	return err;
 }
 
@@ -528,7 +535,7 @@ err_metadata:
 		if (err) {
 err_buffers:
 			pr_err("CPU %d failed to allocate IBS device buffer; "
-				    "exiting\n", cpu);
+					"exiting\n", cpu);
 			goto out_buffers;
 		}
 		init_workaround_initialize();
@@ -558,7 +565,7 @@ err_buffers:
 #endif
 
 	/* Kernel versions older than 4.10 require some in-kernel locking
-	   around registering the hotplug notifier, or they could eadlock.
+	   around registering the hotplug notifier, or they could deadlock.
 	   See: https://patchwork.kernel.org/patch/3805711/ */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
 	/* 4.10 says just to use get_online_cpus()s, see the Dec. 2016 version
@@ -576,6 +583,28 @@ err_buffers:
 #else
 	on_each_cpu(ibs_setup_lvt, NULL, 1, 1);
 #endif
+
+/* Set up the devices and the hotplug notifiers. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	/* Once we have cpuhp_setup_state(), this will also create the device
+	   because ibs_online_up is called per device. */
+	/* We currently set up everything on CPUHP_AP_ONLINE_DYN because it's
+	   likely that we are not the first device on this chain. Current
+	   kernels have a bug where, if you are the first device on a DYN
+	   notifier chain, your removal from that chain will fail. See:
+	   https://lkml.org/lkml/2017/7/5/574 */
+	ibs_hotplug_notifier = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
+			"cpu/ibs:online", ibs_online_up, ibs_prepare_down);
+	if (ibs_hotplug_notifier < 0)
+		goto out_chrdev;
+	put_online_cpus();
+
+#else // < 4.10
+	/* cpuhp_setup_state() is used in 4.10 and above.
+	   This ends up calling the ibs_online_up notifier for each
+	   CPU, which will actually perform the device creation the
+	   first time through. So no need to do this. On older kernels, we
+	   have to create the devices here. */
 	for_each_online_cpu(cpu) {
 		if (ibs_op_supported)
 			err = ibs_device_create(IBS_OP, cpu);
@@ -586,28 +615,20 @@ err_buffers:
 		if (err != 0)
 			goto out_class;
 	}
-
 	/* After setting up the current CPUs' data structures, we register the
 	   notifier for them. This changes depending on the kernel version */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
-	/* We currently set up everything on CPUHP_AP_ONLINE_DYN because it's
-	   likely that we are not the first device on this chain. Current
-	   kernels have a bug where, if you are the first device on a DYN
-	   notifier chain, your removal from that chain will fail. See:
-	   https://lkml.org/lkml/2017/7/5/574 */
-	ibs_hotplug_notifier = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN,
-			"cpu/ibs:online", ibs_online_up, ibs_prepare_down);
-	put_online_cpus();
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,15,0)
 	__register_hotcpu_notifier(&ibs_class_cpu_notifier);
 	cpu_notifier_register_done();
 #else
 	register_hotcpu_notifier(&ibs_class_cpu_notifier);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)
 	put_online_cpus();
-#endif
-#endif
+#endif // >= 2.6.25
+#endif // >= 3.15.0
+#endif // >= 4.10
 
+/* Now set up the NMI handler */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,2,0)
 	err = register_nmi_handler(NMI_LOCAL, handle_ibs_nmi,
 				NMI_FLAG_FIRST, "ibs_op");
@@ -623,7 +644,9 @@ err_buffers:
 
 out_device:
 	destroy_ibs_devices();
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 out_class:
+#endif
 	destroy_ibs_hotplug();
 out_chrdev:
 	unregister_ibs_chrdev();
