@@ -210,6 +210,8 @@ that support IBS:
         Family 15h Model 60h (CPU formerly code-named "Excavator")
   * AMD Ryzen(tm) 7 1800X
         Family 17h Model 01h (CPU formerly code-named "Zen")
+  * AMD EPYC(tm) 7301
+        Family 17h Model 01h (CPU formerly code-named "Zen")
 
 Using the AMD Research IBS Toolkit
 --------------------------------------------------------------------------------
