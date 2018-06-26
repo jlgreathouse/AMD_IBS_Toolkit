@@ -109,10 +109,14 @@ static inline void collect_op_data(struct ibs_dev *dev, struct ibs_op *sample)
 	rdmsrl(MSR_IBS_OP_DATA3, sample->op_data3);
 	if (dev->ibs_op_data4_supported)
 		rdmsrl(MSR_IBS_OP_DATA4, sample->op_data4);
+	else
+		sample->op_data4 = 0ULL;
 	rdmsrl(MSR_IBS_DC_LIN_AD, sample->dc_lin_ad);
 	rdmsrl(MSR_IBS_DC_PHYS_AD, sample->dc_phys_ad);
 	if (dev->ibs_brn_trgt_supported)
 		rdmsrl(MSR_IBS_BR_TARGET, sample->br_target);
+	else
+		sample->br_target = 0ULL;
 }
 
 /**
@@ -123,6 +127,8 @@ static inline void collect_fetch_data(struct ibs_dev *dev, struct ibs_fetch *sam
 	rdmsrl(MSR_IBS_FETCH_CTL, sample->fetch_ctl);
 	if (dev->ibs_fetch_ctl_extd_supported)
 		rdmsrl(MSR_IBS_EXTD_CTL, sample->fetch_ctl_extd);
+	else
+		sample->fetch_ctl_extd = 0ULL;
 	rdmsrl(MSR_IBS_FETCH_LIN_AD, sample->fetch_lin_ad);
 	rdmsrl(MSR_IBS_FETCH_PHYS_AD, sample->fetch_phys_ad);
 }
