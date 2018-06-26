@@ -172,7 +172,8 @@ In addition, it has been tested on the following processors, though its logic sh
     - Family 15h Model 60h (CPU formerly code-named "Excavator")
 * AMD Ryzen&trade; 7 1800X
     - Family 17h Model 01h (CPU formerly code-named "Zen")
-
+* AMD EPYC&trade; 7301
+    - Family 17h Model 01h (CPU formerly code-named "Zen")
 Using the AMD Research IBS Toolkit
 --------------------------------------------------------------------------------
 The AMD Research IBS Toolkit includes most of the tools necessary to analyze applications using IBS. This includes the driver to access IBS, a monitoring application which automatically gathers IBS samples from an application under test, an application to decode these IBS samples into a human-readable format, and a tool to annotate these samples with application-level information about each instruction.

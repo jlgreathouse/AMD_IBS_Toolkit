@@ -163,14 +163,14 @@ static void ibs_setup_lvt(void *nothing)
 	unsigned long reg;
 	unsigned int v;
 #endif
-
+	preempt_disable();
 	rdmsrl(MSR_IBS_CONTROL, ibs_control);
 	if (!(ibs_control & IBS_LVT_OFFSET_VAL))
 		goto fail;
 	offset = ibs_control & IBS_LVT_OFFSET;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 	if(!setup_APIC_eilvt(offset, 0, APIC_EILVT_MSG_NMI, 0))
-		return;
+		goto out;
 #else
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,30)
 	reg = (offset << 4) + APIC_EILVTn(0);
@@ -179,10 +179,13 @@ static void ibs_setup_lvt(void *nothing)
 #endif
 	v = (APIC_EILVT_MSG_NMI << 8);
 	apic_write(reg, v);
-	return;
+	goto out;
 #endif
 fail:
 	pr_warn("IBS APIC setup fail on cpu %d\n", smp_processor_id());
+out:
+	preempt_enable();
+	return;
 }
 
 static int ibs_device_create(int flavor, int cpu)
