@@ -223,9 +223,9 @@ void parse_args(int argc, char *argv[], FILE **opf, FILE **fetchf, int *flavors)
     {
         switch (c) {
             case 'h':
-                fprintf(stderr, "This program executes another program and\n");
+                fprintf(stderr, "This program executes another program and ");
                 fprintf(stderr, "collects IBS samples during its execution.\n");
-                fprintf(stderr, "Usage: ./ibs_monitor [-o op_output] [-f fetch_output] [-w working_directory] program_to_run [...]\n");
+                fprintf(stderr, "Usage: ./ibs_monitor [-o op_output] [-f fetch_output] [-w working_directory] [other options below] program_to_run [...]\n");
                 fprintf(stderr, "--working_dir (or -w) {dir}:\n");
                 fprintf(stderr, "       Sets the working direcotry for launching the program to monitor.\n");
                 fprintf(stderr, "--op_file (or -o) {filename}:\n");
@@ -293,17 +293,8 @@ void parse_args(int argc, char *argv[], FILE **opf, FILE **fetchf, int *flavors)
     free(header_line); \
 }
 
-static void output_op_header(FILE *opf, char *argv[])
+static void output_machine_setup(FILE *opf, char *argv[])
 {
-    // Check for proper IBS support
-    check_amd_processor();
-    check_basic_ibs_support();
-    check_ibs_op_support();
-
-    // Op header shows that this is an Op file, lists the family, and then
-    // lists any model-specific support from CPUID_Fn8000_001B_EAX flags.
-    print_hdr(opf, "IBS Op Sample File%s", "\n");
-
     uint32_t fam = cpu_family();
     uint32_t model = cpu_model();
     uint32_t stepping = cpu_stepping();
@@ -313,6 +304,82 @@ static void output_op_header(FILE *opf, char *argv[])
     print_hdr(opf, "AMD Processor Stepping: 0x%x\n", stepping);
     print_hdr(opf, "AMD Processor Name: %s\n", name);
     free(name);
+
+    int page_size = getpagesize();
+    long int num_phys_pages = get_phys_pages();
+    uint64_t total_mem_size = (uint64_t)num_phys_pages * (uint64_t)page_size;
+    double total_mb = total_mem_size / (1024.*1024.);
+    double total_gb = total_mem_size / (1024.*1024.*1024.);
+    if (total_gb > 0)
+    {
+        print_hdr(opf, "Memory Size: %.1f GB\n", total_gb);
+    }
+    else
+    {
+        print_hdr(opf, "Memory Size: %f MB\n", total_mb);
+    }
+
+
+    // Also the name of the OS we ran this on
+    struct utsname os_info;
+    uname(&os_info);
+    print_hdr(opf, "System name: %s\n", os_info.nodename);
+    print_hdr(opf, "OS: %s %s %s %s\n", os_info.sysname, os_info.release, os_info.version, os_info.machine);
+
+    // Also when we ran things
+    char timestamp[512];
+    time_t cur_time;
+    time(&cur_time);
+    strftime(timestamp, 512, "%c", localtime(&cur_time));
+    print_hdr(opf, "Timestamp: %s\n", timestamp);
+
+    if (global_work_dir != NULL)
+    {
+        print_hdr(opf, "Working directory: %s\n", global_work_dir);
+    }
+    else
+    {
+        char *cwd;
+        cwd = getcwd(NULL, 0);
+        if (cwd != NULL)
+        {
+            print_hdr(opf, "Working directory: %s\n", cwd)
+            free(cwd);
+        }
+        else
+        {
+            fprintf(stderr, "Unable to find the current working directory.\n");
+            fprintf(stderr, "    %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Also output what command this was
+    print_hdr(opf, "Command line: %s", "");
+    int i = 0;
+    while (argv[i] != NULL)
+    {
+        print_hdr(opf, "%s ", argv[i]);
+        i++;
+    }
+    print_hdr(opf, "%s\n", "");
+}
+
+static void output_op_header(FILE *opf, char *argv[])
+{
+    // Check for proper IBS support
+    check_amd_processor();
+    check_basic_ibs_support();
+    check_ibs_op_support();
+
+    uint32_t fam = cpu_family();
+    uint32_t model = cpu_model();
+
+    // Op header shows that this is an Op file, lists the family, and then
+    // lists any model-specific support from CPUID_Fn8000_001B_EAX flags.
+    print_hdr(opf, "IBS Op Sample File%s", "\n");
+
+    output_machine_setup(opf, argv);
 
     // Save off the version of the ibs_op_t structure that this application
     // will be dumping to disk. This way, old traces can later be read by
@@ -387,67 +454,9 @@ static void output_op_header(FILE *opf, char *argv[])
         ibs_data_3_20_31_48_63 = 1;
     print_hdr(opf, "IbsData3_20_31_48_63: %u\n", ibs_data_3_20_31_48_63);
 
-    int page_size = getpagesize();
-    long int num_phys_pages = get_phys_pages();
-    uint64_t total_mem_size = (uint64_t)num_phys_pages * (uint64_t)page_size;
-    double total_mb = total_mem_size / (1024.*1024.);
-    double total_gb = total_mem_size / (1024.*1024.*1024.);
-    if (total_gb > 0)
-    {
-        print_hdr(opf, "Memory Size: %.1f GB\n", total_gb);
-    }
-    else
-    {
-        print_hdr(opf, "Memory Size: %f MB\n", total_mb);
-    }
-
-
-    // Also the name of the OS we ran this on
-    struct utsname os_info;
-    uname(&os_info);
-    print_hdr(opf, "System name: %s\n", os_info.nodename);
-    print_hdr(opf, "OS: %s %s %s %s\n", os_info.sysname, os_info.release, os_info.version, os_info.machine);
-
-    // Also when we ran things
-    char timestamp[512];
-    time_t cur_time;
-    time(&cur_time);
-    strftime(timestamp, 512, "%c", localtime(&cur_time));
-    print_hdr(opf, "Timestamp: %s\n", timestamp);
-
-    if (global_work_dir != NULL)
-    {
-        print_hdr(opf, "Working directory: %s\n", global_work_dir);
-    }
-    else
-    {
-        char *cwd;
-        cwd = getcwd(NULL, 0);
-        if (cwd != NULL)
-        {
-            print_hdr(opf, "Working directory: %s\n", cwd)
-            free(cwd);
-        }
-        else
-        {
-            fprintf(stderr, "Unable to find the current working directory.\n");
-            fprintf(stderr, "    %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-    }
-
-    // Also output what command this was
-    print_hdr(opf, "Command line: %s", "");
-    int i = 0;
-    while (argv[i] != NULL)
-    {
-        print_hdr(opf, "%s ", argv[i]);
-        i++;
-    }
-    print_hdr(opf, "%s\n", "");
-
     // Last line of every header before the binary dump of IBS samples starts
     // is 45 equal signs.
+    print_hdr(opf, "%s\n", "");
     print_hdr(opf, "=============================================%s", "\n");
     return;
 }
@@ -463,15 +472,7 @@ static void output_fetch_header(FILE *fetchf, char *argv[])
     // lists any model-specific support from CPUID_Fn8000_001B_EAX flags.
     print_hdr(fetchf, "IBS Fetch Sample File%s", "\n");
 
-    uint32_t fam = cpu_family();
-    uint32_t model = cpu_model();
-    uint32_t stepping = cpu_stepping();
-    char *name = cpu_name();
-    print_hdr(fetchf, "AMD Processor Family: 0x%x\n", fam);
-    print_hdr(fetchf, "AMD Processor Model: 0x%x\n", model);
-    print_hdr(fetchf, "AMD Processor Stepping: 0x%x\n", stepping);
-    print_hdr(fetchf, "AMD Processor Name: %s\n", name);
-    free(name);
+    output_machine_setup(fetchf, argv);
 
     // Save off the version of the ibs_fetch_t structure that this application
     // will be dumping to disk. This way, old traces can later be read by
@@ -483,18 +484,9 @@ static void output_fetch_header(FILE *fetchf, char *argv[])
     uint32_t ibs_fetch_ctl_extd = (ibs_id & (1 << 9)) >> 9;
     print_hdr(fetchf, "IbsFetchCtlExtd: %u\n", ibs_fetch_ctl_extd);
 
-    // Also output what command this was
-    print_hdr(fetchf, "Command line: %s", "");
-    int i = 0;
-    while (argv[i] != NULL)
-    {
-        print_hdr(fetchf, "%s ", argv[i]);
-        i++;
-    }
-    print_hdr(fetchf, "%s\n", "");
-
     // Last line of every header before the binary dump of IBS samples starts
     // is 45 equal signs.
+    print_hdr(fetchf, "%s\n", "");
     print_hdr(fetchf, "=============================================%s", "\n");
     return;
 }
