@@ -133,13 +133,19 @@ static inline void collect_fetch_data(struct ibs_dev *dev, struct ibs_fetch *sam
 	rdmsrl(MSR_IBS_FETCH_PHYS_AD, sample->fetch_phys_ad);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,3,0)
+#define AMD_IBS_RDTSC(x) (x) = rdtsc_ordered()
+#else
+#define AMD_IBS_RDTSC(x) rdtscll(x)
+#endif
+
 /**
  * collect_common_data - fill fields common to both fetch and op flavors
  * @sample:	ptr to either struct ibs_op or struct ibs_fetch
  */
 #define collect_common_data(sample) \
 	do { \
-		rdtscll(sample->tsc); \
+	        AMD_IBS_RDTSC(sample->tsc);  \
 		asm ("movq %%cr3, %%rax\n\t" \
 		     "movq %%rax, %0" \
 		     : "=m"(sample->cr3) \
