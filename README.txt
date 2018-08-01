@@ -1,4 +1,4 @@
-A/MD Research Instruction Based Sampling Toolkit
+AMD Research Instruction Based Sampling Toolkit
 ===============================================================================
 
 This repository contains tools which can be used to access the Instruction
@@ -369,6 +369,18 @@ of the following information:
 For more information about the technical details of AMD's Instruction Based
 Sampling, please refer AMD's various processor manuals: [5-17]
 
+For more information about micro-ops in AMD cores, please refer to AMD's
+software optimization guides: [5-6, 18-19]. In particular, note that some of
+the descriptions in these manuals refer to macro-ops and micro-ops. For
+instance, in Family 17h cores, AMD64 instructions are broken into one or more
+macro-ops. These macro-ops are dispatched into the back-end of the pipeline,
+where they may be split into one or two micro-ops. For instane, an instruction
+that needs both the ALU (to do math or logic operatinos) and AGU (to calculate
+an address for a load or a store) will be split into two micro-ops. One of
+those micro-ops will go into the ALU scheduler units and the other will go to
+the AGU scheduler units. In these Family 17h cores, IBS op sampling actually
+samples macro-ops at dispatch time.
+
 
 [1] S. V. Moore, "A Comparison of Counting and Sampling Modes of Using
     Performance Monitoring Hardware," in Proc. of the Int'l Conf. on
@@ -417,13 +429,17 @@ Sampling, please refer AMD's various processor manuals: [5-17]
     Rev. 3.06.
 [17] Advanced Micro Devices, Inc. "Processor Programming Reference (PPR) for
     AMD Family 17h Model 01h, Revision B1 Processors". AMD Publication #54945.
+18. Advanced Micro Devices, Inc. "Software Optimization Guide for AMD Family
+    16h Processors. AMD Publication #52128. Rev. 1.1.
+19. Advanced Micro Devices, Inc. "Software Optimization Guide for AMD Family
+    17h Processors. AMD Publication #55723. Rev. 3.00.
 
 
 Trademark Attribution
 --------------------------------------------------------------------------------
-(c) 2017 Advanced Micro Devices, Inc. All rights reserved.
-AMD, the AMD Arrow logo, AMD Phenom, Opteron, Ryzen, and combinations thereof
-are trademarks of Advanced Micro Devices, Inc. in the United States and/or other
-jurisdictions. Linux is a registered trademark of Linus Torvalds.
+(c) 2017-2018 Advanced Micro Devices, Inc. All rights reserved.
+AMD, the AMD Arrow logo, AMD Phenom, Opteron, Ryzen, EPYC, and combinations
+thereof are trademarks of Advanced Micro Devices, Inc. in the United States
+and/or other jurisdictions. Linux is a registered trademark of Linus Torvalds.
 Other names are for informational purposes only and may be trademarks of their
 respective owners.

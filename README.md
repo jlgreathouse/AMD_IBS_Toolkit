@@ -247,13 +247,14 @@ Depending on the process family, these Op IBS Samples can contain some or all of
 * The number of outstanding memory accesses when a load's value is returned
 * The virtual and physical addresses accessed by any load or store
 
-For more information about the technical details of AMD's Instruction Based
-Sampling, please refer AMD's various processor manuals: [5-17]
+For more information about the technical details of AMD's Instruction Based Sampling, please refer AMD's various processor manuals: [5-17]
+
+For more information about micro-ops in AMD cores, please refer to AMD's software optimization guides: [5-6, 18-19]. In particular, note that some of the descriptions in these manuals refer to macro-ops and micro-ops. For instance, in Family 17h cores, AMD64 instructions are broken into one or more macro-ops. These macro-ops are dispatched into the back-end of the pipeline, where they may be split into one or two micro-ops. For instane, an instruction that needs both the ALU (to do math or logic operatinos) and AGU (to calculate an address for a load or a store) will be split into two micro-ops. One of those micro-ops will go into the ALU scheduler units and the other will go to the AGU scheduler units. In these Family 17h cores, IBS op sampling actually samples macro-ops at dispatch time.
 
 ### Background References ###
 1. S. V. Moore, "[A Comparison of Counting and Sampling Modes of Using Performance Monitoring Hardware](http://icl.cs.utk.edu/news_pub/submissions/icl-ut-02-01_perfmodels.pdf)," in Proc. of the Int'l Conf. on Computational Science-Part II (ICCS), 2002.
 2. J. Dean, J. Hicks, C. A. Waldspurger, W. E. Weihl, G. Chrysos, "[ProfileMe: Hardware Support for Instruction-Level Profiling on Out-of-Order Processors](https://doi.org/10.1109/MICRO.1997.645821)," in Proc. of the 30th IEEE/ACM Int'l Symp. on Microarchitecture (MICRO-30), 1997.
-3. P. J. Drongowski, "[Instruction-Based Sampling: A New Performance Analysis Technique for AMD Family 10h Processors](http://developer.amd.com/community/blog/article/instruction-based-sampling-a-new-performance-analysis-technique-for-amd-family-10h-processors/)," AMD Technical Report, 2007.
+3. P. J. Drongowski, "[Instruction-Based Sampling: A New Performance Analysis Technique for AMD Family 10h Processors](http://developer.amd.com/wordpress/media/2012/10/AMD_IBS_paper_EN.pdf)," AMD Technical Report, 2007.
 4. P. Drongowski, L. Yu, F. Swehosky, S. Suthikulpanit, R. Richter, "[Incorporating Instruction-Based Sampling into AMD CodeAnalyst](https://doi.org/10.1109/ISPASS.2010.5452049)," in Proc. of the 2010 IEEE Int'l Symp. on Performance Analysis of Systems & Software (ISPASS), 2010.
 5. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 10h and 12h Processors](http://support.amd.com/techdocs/40546.pdf)". AMD Publication #40546. Rev. 3.13. Appendix G.
 6. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 15h Processors](https://support.amd.com/TechDocs/47414_15h_sw_opt_guide.pdf)". AMD Publication #47414. Rev. 3.07.  Appendix F.
@@ -268,6 +269,8 @@ Sampling, please refer AMD's various processor manuals: [5-17]
 15. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 16h Models 00h-0Fh Processors](http://support.amd.com/TechDocs/48751_16h_bkdg.pdf)". AMD Publication #48751. Rev. 3.03.
 16. Advanced Micro Devices, Inc. "[BIOS and Kernel Developer's Guide (BKDG) For AMD Family 16h Models 30h-3Fh Processors](http://support.amd.com/TechDocs/52740_16h_Models_30h-3Fh_BKDG.pdf)". AMD Publication #52740. Rev. 3.06.
 17. Advanced Micro Devices, Inc. "[Processor Programming Reference (PPR) for AMD Family 17h Model 01h, Revision B1 Processors](http://support.amd.com/TechDocs/54945_PPR_Family_17h_Models_00h-0Fh.pdf)". AMD Publication #54945.
+18. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 16h Processors](http://support.amd.com/TechDocs/52128_16h_Software_Opt_Guide.zip)". AMD Publication #52128. Rev. 1.1.
+19. Advanced Micro Devices, Inc. "[Software Optimization Guide for AMD Family 17h Processors](https://developer.amd.com/wordpress/media/2013/12/55723_3_00.ZIP)". AMD Publication #55723. Rev. 3.00.
 
 
 Trademark Attribution
