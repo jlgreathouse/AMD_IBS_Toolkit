@@ -16,6 +16,7 @@
 #include <linux/sched.h>
 #include <linux/version.h>
 #include <linux/wait.h>
+#include <linux/delay.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 #include <linux/atomic.h>
@@ -59,51 +60,79 @@ extern void *pcpu_fetch_dev;
 static inline void enable_ibs_op_on_cpu(struct ibs_dev *dev,
 		const int cpu, const u64 op_ctl)
 {
-    if (dev->workaround_fam17h_zn)
-        start_fam17h_zn_dyn_workaround(cpu);
+	if (dev->workaround_fam17h_zn)
+		start_fam17h_zn_dyn_workaround(cpu);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
-    wrmsrl_on_cpu(cpu, MSR_IBS_OP_CTL, op_ctl);
+	wrmsrl_on_cpu(cpu, MSR_IBS_OP_CTL, op_ctl);
 #else
-    wrmsr_on_cpu(cpu, MSR_IBS_OP_CTL, (u32)((u64)(op_ctl)),
-            (u32)((u64)(op_ctl) >> 32));
+	wrmsr_on_cpu(cpu, MSR_IBS_OP_CTL, (u32)((u64)(op_ctl)),
+			(u32)((u64)(op_ctl) >> 32));
 #endif
+}
+
+/* Disabling IBS op sampling takes a little bit of extra work.
+ * It is possible that an IBS op has been sampled, meaning that
+ * IbsOpVal is set. However, the NMI has not yet arrived from
+ * the APIC. As such, we will (in the very near future) enter
+ * the NMI handler.
+ * If we just fully zero out the IBS_OP_CTL register, then that
+ * NMI handler will see that IbsOpVal is zero and think that this
+ * NMI was not caused by an op sample. It would pass the interrupt
+ * on down the NMI chain, which could eventually lead to a system
+ * reboot (if, for instance, there is a watchdog timer enabled).
+ * We can't just read IbsOpVal, zero out IbsOpEn, and then save IbsOpVal
+ * back into the register; the NMI could arrive between the zeroing of
+ * the register and the resetting of IbsOpVal. There is no way to do an
+ * atomic read-modify-write to an MSR.
+ * Our solution is thus to force IbsOpVal to true, but zero out all the
+ * other bits. We wait for a microsecond (giving the APIC time to poke
+ * this core), then fully disable IBS_OP_CTL. This prevents the dangling
+ * IbsOpVal from inadvertently eating any real NMIs targetted at this
+ * core (except during this microsecond-long window, where we are spin
+ * looping and thus hopefully not producing any real work that would
+ * cause an NMI). */
+static void disable_ibs_op(void *info)
+{
+	wrmsrl(MSR_IBS_OP_CTL, IBS_OP_VAL);
+	udelay(1);
+	wrmsrl(MSR_IBS_OP_CTL, 0ULL);
 }
 
 void disable_ibs_op_on_cpu(struct ibs_dev *dev, const int cpu)
 {
-    if (dev->workaround_fam10h_err_420)
-        do_fam10h_workaround_420(cpu);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
-    wrmsrl_on_cpu(cpu, MSR_IBS_OP_CTL, 0ULL);
+	if (dev->workaround_fam10h_err_420)
+		do_fam10h_workaround_420(cpu);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
+	smp_call_function_single(cpu, disable_ibs_op, NULL, 1);
 #else
-    wrmsr_on_cpu(cpu, MSR_IBS_OP_CTL, 0UL, 0UL);
+	smp_call_function_single(cpu, disable_ibs_op, NULL, 1, 1);
 #endif
-    if (dev->workaround_fam17h_zn)
-        stop_fam17h_zn_dyn_workaround(cpu);
+	if (dev->workaround_fam17h_zn)
+		stop_fam17h_zn_dyn_workaround(cpu);
 }
 
 static inline void enable_ibs_fetch_on_cpu(struct ibs_dev *dev,
 		const int cpu, const u64 fetch_ctl)
 {
-    if (dev->workaround_fam17h_zn)
-        start_fam17h_zn_dyn_workaround(cpu);
+	if (dev->workaround_fam17h_zn)
+		start_fam17h_zn_dyn_workaround(cpu);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
-    wrmsrl_on_cpu(cpu, MSR_IBS_FETCH_CTL, fetch_ctl);
+	wrmsrl_on_cpu(cpu, MSR_IBS_FETCH_CTL, fetch_ctl);
 #else
-    wrmsr_on_cpu(cpu, MSR_IBS_FETCH_CTL, (u32)((u64)(fetch_ctl)),
-            (u32)((u64)(fetch_ctl) >> 32));
+	wrmsr_on_cpu(cpu, MSR_IBS_FETCH_CTL, (u32)((u64)(fetch_ctl)),
+			(u32)((u64)(fetch_ctl) >> 32));
 #endif
 }
 
 void disable_ibs_fetch_on_cpu(struct ibs_dev *dev, const int cpu)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
-    wrmsrl_on_cpu(cpu, MSR_IBS_FETCH_CTL, 0ULL);
+	wrmsrl_on_cpu(cpu, MSR_IBS_FETCH_CTL, 0ULL);
 #else
-    wrmsr_on_cpu(cpu, MSR_IBS_FETCH_CTL, 0UL, 0UL);
+	wrmsr_on_cpu(cpu, MSR_IBS_FETCH_CTL, 0UL, 0UL);
 #endif
-    if (dev->workaround_fam17h_zn)
-        stop_fam17h_zn_dyn_workaround(cpu);
+	if (dev->workaround_fam17h_zn)
+		stop_fam17h_zn_dyn_workaround(cpu);
 }
 
 static void set_ibs_defaults(struct ibs_dev *dev)

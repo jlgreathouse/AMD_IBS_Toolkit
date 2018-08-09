@@ -175,6 +175,11 @@ static inline void handle_ibs_op_event(struct pt_regs *regs)
 	if (dev->workaround_fam10h_err_420 && !(tmp & IBS_OP_MAX_CNT_OLD))
 		return;
 
+	/* See disable_ibs_op() definition for more detals about why we
+	 * potentially want to skip this IBS op sample. */
+	if (!(tmp & IBS_OP_MAX_CNT))
+		return;
+
 	if (new_wr == atomic_long_read(&dev->rd)) {	/* Full buffer */
 		atomic_long_inc(&dev->lost);
 		goto out;
@@ -200,10 +205,10 @@ static inline void handle_ibs_op_event(struct pt_regs *regs)
 #endif
 
 out:
-	dev->ctl = randomize_op_ctl(dev->ctl);
+	tmp = randomize_op_ctl(dev->ctl);
 	if (dev->workaround_fam15h_err_718)
 		wrmsrl(MSR_IBS_OP_DATA3, 0ULL);
-	enable_ibs_op(dev->ctl);
+	enable_ibs_op(tmp);
 }
 
 static inline void handle_ibs_fetch_event(struct pt_regs *regs)
