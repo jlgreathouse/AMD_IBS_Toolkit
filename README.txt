@@ -212,6 +212,8 @@ that support IBS:
         Family 17h Model 01h (CPU formerly code-named "Zen")
   * AMD EPYC(tm) 7301
         Family 17h Model 01h (CPU formerly code-named "Zen")
+  * AMD Ryzen 5 2400GE
+        Family 17h Model 11h (CPU formerly code-named "Zen")
 
 Using the AMD Research IBS Toolkit
 --------------------------------------------------------------------------------

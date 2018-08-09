@@ -174,6 +174,8 @@ In addition, it has been tested on the following processors, though its logic sh
     - Family 17h Model 01h (CPU formerly code-named "Zen")
 * AMD EPYC&trade; 7301
     - Family 17h Model 01h (CPU formerly code-named "Zen")
+* AMD Ryzen 5 2400GE
+    - Family 17h Model 11h (CPU formerly code-named "Zen")
 
 Using the AMD Research IBS Toolkit
 --------------------------------------------------------------------------------
