@@ -1,7 +1,7 @@
 /*
  * Linux kernel driver for the AMD Research IBS Toolkit
  *
- * Copyright (C) 2015-2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2018 Advanced Micro Devices, Inc.
  *
  * This driver is available under the Linux kernel's version of the GPLv2.
  * See driver/LICENSE for more licensing details.
@@ -86,7 +86,7 @@ struct ibs_dev {
 	int ibs_op_data4_supported;
 	int workaround_fam10h_err_420;
 	int workaround_fam15h_err_718;
-	int workaround_fam17h_m01h;
+	int workaround_fam17h_zn;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 	struct irq_work bottom_half;

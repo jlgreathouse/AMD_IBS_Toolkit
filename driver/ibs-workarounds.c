@@ -1,7 +1,7 @@
 /*
  * Linux kernel driver for the AMD Research IBS Toolkit
  *
- * Copyright (C) 2015-2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2018 Advanced Micro Devices, Inc.
  *
  * This driver is available under the Linux kernel's version of the GPLv2.
  * See driver/LICENSE for more licensing details.
@@ -28,20 +28,6 @@
 #define topology_sibling_cpumask(cpu) (per_cpu(cpu_sibling_map, cpu))
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)
-struct msr_info {
-	u32 msr_no;
-	union {
-		struct {
-			u32 l;
-			u32 h;
-		};
-		u64 q;
-	} reg;
-	int err;
-};
-#endif
-
 #define FAM17H_MSR_WA_1 0xc0011020
 #define FAM17H_MSR_WA_1_BITS 0x40000000000000ULL
 #define FAM17H_MSR_WA_2 0xc0011029
@@ -50,8 +36,8 @@ struct msr_info {
 #define FAM17H_MSR_WA_3_BITS 0x404040ULL
 #define CPUID_EXT_FEATURES 0xc0011005
 /* Storage for old MSR values that are changed when enabling IBS
- * on Family 17h Model 01h cores. We assume this IBS driver is the
- * only thing to change them, and that they are the same per core.
+ * on Family 17h processors with "Zen" CPUs. We assume this IBS driver
+ * is the only thing to change them, and that they are the same per core.
  * As such, we only have one value for the whole system so that
  * we can know what to set them back to. */
 static u64 fam17h_old_1 = 0;
@@ -63,16 +49,6 @@ static u64 fam17h_old_3 = 0;
 static int* pcpu_num_devices_enabled;
 static spinlock_t * pcpu_workaround_lock;
 static int workarounds_started = 0;
-
-/* The following function exists because there are some WRMSR commands that
- * need to do a heavyweight pipeline flush to prevent any hardware problems.
- * We use a WBINVD to flush the pipeline and the caches. */
-static void custom_wrmsr_flush(void *info)
-{
-	struct msr_info *rv = info;
-	asm volatile("wbinvd");
-	rv->err = wrmsr_safe((rv->msr_no), (rv->reg.l), (rv->reg.h));
-}
 
 /* Different kernels had different ways of performing a 64-bit rdmsr and
  * wrmsr commands on target CPUs.
@@ -103,10 +79,10 @@ static inline void custom_wrmsrl_on_cpu(unsigned int cpu, u32 msr_no, u64 val)
 #endif
 }
 
-/* When performing the workarounds for Family 17h Model 01h, we want to
- * store off the default values of a series of registers so we can
+/* When performing the workarounds for Family 17h first-generation CPUs, we
+ * want to store off the default values of a series of registers so we can
  * restore the bits we will change after we are done. */
-static void init_fam17h_m01h_workaround(void)
+static void init_fam17h_zn_workaround(void)
 {
 	rdmsrl(FAM17H_MSR_WA_1, fam17h_old_1);
 	rdmsrl(FAM17H_MSR_WA_2, fam17h_old_2);
@@ -122,7 +98,7 @@ int init_workaround_structs(void)
 	if (c->x86_vendor == X86_VENDOR_AMD && c->x86 == 0x17 &&
 			c->x86_model == 0x1)
 	{
-		init_fam17h_m01h_workaround();
+		init_fam17h_zn_workaround();
 	} 
 	pcpu_num_devices_enabled = alloc_percpu(int);
 	if (!pcpu_num_devices_enabled)
@@ -159,13 +135,13 @@ void init_workaround_initialize(void)
 	}
 }
 
-/* Enabling IBS on Family 17h Model 01h processors requires unsetting some bits
- * in various MSRs so long as any IBS samples can flow through the pipeline.
- * This function reads those MSRs out, sets a global view of the default state
- * of those bits, and unsets them on the local core.
+/* Enabling IBS on Family 17h processors with first-generation CPUs requires
+ * unsetting some bits in various MSRs so long as any IBS samples can flow
+ * through the pipeline. This function reads those MSRs out, sets a global view
+ * of the default state of those bits, and unsets them on the local core.
  * This must be called before writing the enable bit into IBS_OP_CTL or
  * IBS_FETCH_CTL. */
-static void enable_fam17h_m01h_dyn_workaround(const int cpu)
+static void enable_fam17h_zn_dyn_workaround(const int cpu)
 {
 	__u64 set_bits;
 	__u64 op_ctl, fetch_ctl;
@@ -201,7 +177,7 @@ static void enable_fam17h_m01h_dyn_workaround(const int cpu)
 	custom_wrmsrl_on_cpu(cpu_to_use, FAM17H_MSR_WA_3, set_bits);
 }
 
-static void disable_fam17h_m01h_dyn_workaround(const int cpu)
+static void disable_fam17h_zn_dyn_workaround(const int cpu)
 {
 	__u64 op_ctl, fetch_ctl;
 	__u64 cur1, cur3, set_bits;
@@ -241,7 +217,7 @@ static void disable_fam17h_m01h_dyn_workaround(const int cpu)
 }
 
 /* Grab lock and call into the dynamic workaround function */
-void start_fam17h_m01h_dyn_workaround(const int cpu)
+void start_fam17h_zn_dyn_workaround(const int cpu)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
 	int cpu_to_use = cpumask_first(topology_sibling_cpumask(cpu));
@@ -251,12 +227,12 @@ void start_fam17h_m01h_dyn_workaround(const int cpu)
 	spinlock_t *cpu_workaround_lock =
 		per_cpu_ptr(pcpu_workaround_lock, cpu_to_use);
 	spin_lock(cpu_workaround_lock);
-	enable_fam17h_m01h_dyn_workaround(cpu);
+	enable_fam17h_zn_dyn_workaround(cpu);
 	spin_unlock(cpu_workaround_lock);
 }
 
 /* Grab lock and call into the dynamic workaround stopper */
-void stop_fam17h_m01h_dyn_workaround(const int cpu)
+void stop_fam17h_zn_dyn_workaround(const int cpu)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
 	int cpu_to_use = cpumask_first(topology_sibling_cpumask(cpu));
@@ -266,14 +242,13 @@ void stop_fam17h_m01h_dyn_workaround(const int cpu)
 	spinlock_t *cpu_workaround_lock =
 		per_cpu_ptr(pcpu_workaround_lock, cpu_to_use);
 	spin_lock(cpu_workaround_lock);
-	disable_fam17h_m01h_dyn_workaround(cpu);
+	disable_fam17h_zn_dyn_workaround(cpu);
 	spin_unlock(cpu_workaround_lock);
 }
 
-void start_fam17h_m01h_static_workaround(const int cpu)
+void start_fam17h_zn_static_workaround(const int cpu)
 {
-	struct msr_info this_msr;
-	unsigned int cpu_to_use;
+	int cpu_to_offline, cpu_to_online = -1;
 	u64 cur;
 
 	if (!workarounds_started)
@@ -288,38 +263,48 @@ void start_fam17h_m01h_static_workaround(const int cpu)
 	cur |= (1ULL << 42); /* Enable IBS in CPUID */
 	custom_wrmsrl_on_cpu(cpu, CPUID_EXT_FEATURES, cur);
 
-	/* However, our workarounds are per-core, so if we are in the
-	 * non-main thread, just skip doing the workaround. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
-	cpu_to_use = cpumask_first(topology_sibling_cpumask(cpu));
-#else
-	cpu_to_use = first_cpu(topology_core_siblings(cpu));
-#endif
-	if (cpu_to_use != cpu)
+	/* Our workaround is per-core, so we should only set this stuff
+	 * once. If we have already done the workaround in one of the
+	 * threads (or from this thread at another time), then we can
+	 * skip the rest of this work.
+	 * This will also prevent us from trying to perform cpu_down
+	 * on any neighboring cores while we are in a hotplug transition.
+	 * (which would cause a deadlock). If we are hotplugging the
+	 * first thread on this core, we will not have any siblings in
+	 * the for_each_cpu() loop below. If we are hotplugging the second
+	 * thread, the first thread would have already set the
+	 * workaround bits. */
+	cur = custom_rdmsrl_on_cpu(cpu, FAM17H_MSR_WA_2);
+	if (cur & FAM17H_MSR_WA_2_BITS)
 		return;
 
+	/* Disable any neighboring cores while we perform the following work.
+	 * Otherwise, we can lock up the core because of SMT work going on. */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
+	/* for_each_cpu() was in 2.6.28, but not topology_sibilng_cpumask() */
+	for_each_cpu(cpu_to_offline, topology_sibling_cpumask(cpu))
+#else
+	for_each_cpu_mask(cpu_to_offline, topology_core_siblings(cpu))
+#endif
+	{
+		if (cpu_to_offline != cpu)
+		{
+			cpu_down(cpu_to_offline);
+			cpu_to_online = cpu_to_offline;
+		}
+	}
 	/* We want to turn on some bits on each physical core when we enable
 	 * the driver, or if that core comes up after we enable the driver. */
-	this_msr.msr_no = FAM17H_MSR_WA_2;
-	cur = custom_rdmsrl_on_cpu(cpu_to_use, FAM17H_MSR_WA_2);
-	cur |= FAM17H_MSR_WA_2_BITS;
-	this_msr.reg.q = cur;
-	/* Use a custom wrmsr function for this so we can put in a
-	 * pipeline flush. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
-	smp_call_function_single(cpu_to_use, custom_wrmsr_flush, &this_msr, 1);
-#else
-	smp_call_function_single(cpu_to_use, custom_wrmsr_flush, &this_msr, 1, 1);
-#endif
+	custom_wrmsrl_on_cpu(cpu, FAM17H_MSR_WA_2, (cur | FAM17H_MSR_WA_2_BITS));
+	if (cpu_to_online != -1)
+		cpu_up(cpu_to_online);
 }
 
-void stop_fam17h_m01h_static_workaround(const int cpu)
+void stop_fam17h_zn_static_workaround(const int cpu)
 {
-	struct msr_info this_msr;
 	unsigned int cpu_to_use;
 	u64 cur;
 
-	this_msr.msr_no = FAM17H_MSR_WA_2;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
 	cpu_to_use = cpumask_first(topology_sibling_cpumask(cpu));
 #else
@@ -333,16 +318,7 @@ void stop_fam17h_m01h_static_workaround(const int cpu)
 		cur = custom_rdmsrl_on_cpu(cpu_to_use, FAM17H_MSR_WA_2);
 		/* Unset the bits */
 		cur = fam17h_old_2 | (cur & ~FAM17H_MSR_WA_2_BITS);
-		this_msr.reg.q = cur;
-		/* Use a custom wrmsr function for this so we can put in a
-		 * pipeline flush. */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)
-		smp_call_function_single(cpu_to_use, custom_wrmsr_flush,
-				&this_msr, 1);
-#else
-                smp_call_function_single(cpu_to_use, custom_wrmsr_flush,
-				&this_msr, 1, 1);
-#endif
+		custom_wrmsrl_on_cpu(cpu, FAM17H_MSR_WA_2, cur);
 	}
 
 	/* Turn off IBS in the CPUID chain. It's OK to do this without checking

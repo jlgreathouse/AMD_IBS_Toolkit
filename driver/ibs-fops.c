@@ -1,7 +1,7 @@
 /*
  * Linux kernel driver for the AMD Research IBS Toolkit
  *
- * Copyright (C) 2015-2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2018 Advanced Micro Devices, Inc.
  *
  * This driver is available under the Linux kernel's version of the GPLv2.
  * See driver/LICENSE for more licensing details.
@@ -59,8 +59,8 @@ extern void *pcpu_fetch_dev;
 static inline void enable_ibs_op_on_cpu(struct ibs_dev *dev,
 		const int cpu, const u64 op_ctl)
 {
-    if (dev->workaround_fam17h_m01h)
-        start_fam17h_m01h_dyn_workaround(cpu);
+    if (dev->workaround_fam17h_zn)
+        start_fam17h_zn_dyn_workaround(cpu);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
     wrmsrl_on_cpu(cpu, MSR_IBS_OP_CTL, op_ctl);
 #else
@@ -78,15 +78,15 @@ void disable_ibs_op_on_cpu(struct ibs_dev *dev, const int cpu)
 #else
     wrmsr_on_cpu(cpu, MSR_IBS_OP_CTL, 0UL, 0UL);
 #endif
-    if (dev->workaround_fam17h_m01h)
-        stop_fam17h_m01h_dyn_workaround(cpu);
+    if (dev->workaround_fam17h_zn)
+        stop_fam17h_zn_dyn_workaround(cpu);
 }
 
 static inline void enable_ibs_fetch_on_cpu(struct ibs_dev *dev,
 		const int cpu, const u64 fetch_ctl)
 {
-    if (dev->workaround_fam17h_m01h)
-        start_fam17h_m01h_dyn_workaround(cpu);
+    if (dev->workaround_fam17h_zn)
+        start_fam17h_zn_dyn_workaround(cpu);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,13,0)
     wrmsrl_on_cpu(cpu, MSR_IBS_FETCH_CTL, fetch_ctl);
 #else
@@ -102,8 +102,8 @@ void disable_ibs_fetch_on_cpu(struct ibs_dev *dev, const int cpu)
 #else
     wrmsr_on_cpu(cpu, MSR_IBS_FETCH_CTL, 0UL, 0UL);
 #endif
-    if (dev->workaround_fam17h_m01h)
-        stop_fam17h_m01h_dyn_workaround(cpu);
+    if (dev->workaround_fam17h_zn)
+        stop_fam17h_zn_dyn_workaround(cpu);
 }
 
 static void set_ibs_defaults(struct ibs_dev *dev)

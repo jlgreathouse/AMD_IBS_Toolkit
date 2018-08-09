@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2018 Advanced Micro Devices, Inc.
  *
  * This file is distributed under the BSD license described in tools/LICENSE
  *
@@ -131,9 +131,10 @@ void check_basic_ibs_support(void)
     cpuid(&eax, &ebx, &ecx, &edx);
     int ibs_support = ecx & (1 << 10);
     ibs_support >>= 10;
-    // Family 17h Model 01h may not claim IBS support without a BIOS setting,
-    // but our driver can enable the proper settings to turn on IBs. As such,
-    // we push ahead even if it doesn't claim IBS support.
+    // Family 17h processors with first-generation cores (previously code-named
+    // "Zen") will not claim IBS support without a BIOS setting, but our driver
+    // can enable the proper settings to turn on IBS. The driver will turn on
+    // this bit, so if it's not set, we should fail out.
     if (!ibs_support)
     {
         // If bit 10 of CPUID_Fn8000_0001_ECX is not set, then IBS is disabled

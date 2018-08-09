@@ -1,7 +1,7 @@
 /*
  * Linux kernel driver for the AMD Research IBS Toolkit
  *
- * Copyright (C) 2015-2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2018 Advanced Micro Devices, Inc.
  *
  * This driver is available under the Linux kernel's version of the GPLv2.
  * See driver/LICENSE for more licensing details.
@@ -92,7 +92,7 @@ static int workaround_fam15h_err_718 = 0;
  * They require setting some bits in each core to run IBS.
  * This can be done with a BIOS setting on many boards, but we run the same
  * settings in this driver to increase compatibility */
-static int workaround_fam17h_m01h = 0;
+static int workaround_fam17h_zn = 0;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 static struct notifier_block handle_ibs_nmi_notifier =
@@ -136,7 +136,7 @@ static void init_ibs_dev(struct ibs_dev *dev, int cpu)
 	dev->ibs_op_data4_supported = ibs_op_data4_supported;
 	dev->workaround_fam10h_err_420 = workaround_fam10h_err_420;
 	dev->workaround_fam15h_err_718 = workaround_fam15h_err_718;
-	dev->workaround_fam17h_m01h = workaround_fam17h_m01h;
+	dev->workaround_fam17h_zn = workaround_fam17h_zn;
 }
 
 static void init_ibs_op_dev(struct ibs_dev *dev, int cpu)
@@ -249,8 +249,8 @@ static int ibs_online_up(unsigned int cpu)
 #endif
 	pr_info("IBS: Bringing up IBS on core %u\n", cpu);
 	ibs_setup_lvt(NULL);
-	if(workaround_fam17h_m01h)
-		start_fam17h_m01h_static_workaround(cpu);
+	if(workaround_fam17h_zn)
+		start_fam17h_zn_static_workaround(cpu);
 	return 0;
 }
 
@@ -274,8 +274,8 @@ static int ibs_prepare_down(unsigned int cpu)
 	pr_info("IBS: Starting to take down core %u\n", cpu);
 	disable_ibs_op_on_cpu(per_cpu_ptr(pcpu_op_dev, cpu), cpu);
 	disable_ibs_fetch_on_cpu(per_cpu_ptr(pcpu_fetch_dev, cpu), cpu);
-	if (workaround_fam17h_m01h)
-		stop_fam17h_m01h_static_workaround(cpu);
+	if (workaround_fam17h_zn)
+		stop_fam17h_zn_static_workaround(cpu);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
 	ibs_down(cpu);
 #endif
@@ -379,16 +379,22 @@ static int check_for_ibs_support(void)
 
 	feature_id = cpuid_ecx(0x80000001);
 	/* Check bit 10 of CPUID_Fn8000_0001_ECX for IBS support */
-	if (!(feature_id & (1 << 10)) && !workaround_fam17h_m01h)
+	if (!(feature_id & (1 << 10)) && !workaround_fam17h_zn)
 	{
-		if (c->x86 == 0x17 && c->x86_model == 0x1)
+		// "Zen" core workaround. Multiple SoCs have "Zen" cores.
+		// 0x00-0x0f are the Ryzen/Epyc CPU-only SoCs
+		// 0x10-0x2f are the Raven Ridge APUs
+		// 0x50-0x5f also exist
+		if (c->x86 == 0x17 &&
+			((c->x86_model >= 0x0 && c->x86_model <= 0x2f) ||
+			(c->x86_model >= 0x50 && c->x86_model < 0x5f)))
 		{
 			unsigned int cpu;
 			pr_info("IBS: Startup enabling workaround for "
-				"Family 17h Model 01h\n");
-			workaround_fam17h_m01h = 1;
+				"Family 17h first-gen CPUs\n");
+			workaround_fam17h_zn = 1;
 			for_each_online_cpu(cpu) {
-				start_fam17h_m01h_static_workaround(cpu);
+				start_fam17h_zn_static_workaround(cpu);
 			}
 		}
 		else
@@ -398,7 +404,7 @@ static int check_for_ibs_support(void)
 		}
 	}
 
-	if (workaround_fam17h_m01h)
+	if (workaround_fam17h_zn)
 	{
 		pr_info("IBS: This workaround may slow down your processor.\n");
 		pr_info("IBS: Unload IBS driver to maximize performance.\n");
@@ -487,8 +493,8 @@ static void destroy_ibs_cpu_structs(void)
 	for_each_possible_cpu(cpu) {
 		free_ibs_buffer(per_cpu_ptr(pcpu_fetch_dev, cpu));
 		free_ibs_buffer(per_cpu_ptr(pcpu_op_dev, cpu));
-		if (workaround_fam17h_m01h)
-			stop_fam17h_m01h_static_workaround(cpu);
+		if (workaround_fam17h_zn)
+			stop_fam17h_zn_static_workaround(cpu);
 	}
 	free_percpu(pcpu_fetch_dev);
 	free_percpu(pcpu_op_dev);

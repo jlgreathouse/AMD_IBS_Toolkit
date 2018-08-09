@@ -1,7 +1,7 @@
 /*
  * Linux kernel driver for the AMD Research IBS Toolkit
  *
- * Copyright (C) 2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2017-2018 Advanced Micro Devices, Inc.
  *
  * This driver is available under the Linux kernel's version of the GPLv2.
  * See driver/LICENSE for more licensing details.
@@ -32,7 +32,8 @@ void init_workaround_initialize(void);
  * This function sets IbsOpMaxCnt to zero. */
 void do_fam10h_workaround_420(const int cpu);
 
-/* Family 17h Model 07h processors do not necessarily enable IBS by default.
+/* Family 17h processors with first-generation CPUs (previously code-named
+ * "Zen") do not necessarily enable IBS by default.
  * They require setting some bits in each core to run IBS.
  * This can be done with a BIOS setting on many boards, but we run the same
  * settings in this driver to increase compatibility */
@@ -41,15 +42,16 @@ void do_fam10h_workaround_420(const int cpu);
  * either device. The start function will enable the workaround if this is
  * the first device on this core. The stop function will disable the
  * workaround if this is the last device on this core. */
-void start_fam17h_m01h_dyn_workaround(const int cpu);
-void stop_fam17h_m01h_dyn_workaround(const int cpu);
+void start_fam17h_zn_dyn_workaround(const int cpu);
+void stop_fam17h_zn_dyn_workaround(const int cpu);
 
 /* The following functions should only be called when you are starting the
  * driver up and stopping the driver. These workarounds must be enabled
- * the entire time the driver runs when on a Family 17h Model 01h core.
+ * the entire time the driver runs when on a Family 17h processor with a
+ * first-generation CPU (previously code-named "Zen").
  * You may also want to call the start function whenever bringing up
  * a new core that was down when starting the driver. */
-void start_fam17h_m01h_static_workaround(const int cpu);
-void stop_fam17h_m01h_static_workaround(const int cpu);
+void start_fam17h_zn_static_workaround(const int cpu);
+void stop_fam17h_zn_static_workaround(const int cpu);
 
 #endif	/* IBS_WORKAROUND_H */
