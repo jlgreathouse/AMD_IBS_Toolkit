@@ -276,7 +276,7 @@ def write_csv(all_temp_files, in_csv_file, out_file):
         first_line = fin.readline().split(',')
     fin.close()
     with open(out_file, 'w+') as fout:
-        fout_csv = csv.writer(fout)
+        fout_csv = csv.writer(fout, lineterminator='\n')
         first_line.pop() # kill the trailing newline
         first_line.extend(['Source_Line', 'Binary_Offset', 'Opcode', 'Instruction'])
         fout_csv.writerow(first_line)
