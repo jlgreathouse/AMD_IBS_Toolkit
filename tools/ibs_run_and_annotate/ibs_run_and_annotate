@@ -315,12 +315,20 @@ def parse_and_run_ibs():
                         'Skip running the application and use existing IBS '\
                         'traces instead. Will look for op_csv_name and '\
                         'fetch_csv_name as inputs.')
-    parser.add_argument('-o', '--op_sample', action='store_true',
-                        dest='sample_op',
-                        help='Gather/annotate IBS op samples.')
-    parser.add_argument('-f', '--fetch_sample', action='store_true',
-                        dest='sample_ft',
-                        help='Gather/annotate IBS fetch samples.')
+    parser.add_argument('-o', '--op_sample', action='store',
+                        dest='op_sample_rate', const='262144', default='0',
+                        nargs='?',
+                        help='Gather/annotate IBS op samples. Without passing '\
+                        'a number to this argument, we will default to '\
+                        'sampling every 256K ops. Optionally pass a number '\
+                        'to change the op sampling rate.')
+    parser.add_argument('-f', '--fetch_sample', action='store',
+                        dest='fetch_sample_rate', const='65536', default='0',
+                        nargs='?',
+                        help='Gather/annotate IBS fetch samples. Without '\
+                        'passing a number to this argument, we will default '\
+                        'to sampling every 64K fetches. Optionally pass a '
+                        'number to change fetch sampling rate.')
     parser.add_argument('-t', '--temp_dir',
                         default=os.path.abspath(os.getcwd()),
                         help='Directory used to store the temporary IBS '\
@@ -373,7 +381,7 @@ def parse_and_run_ibs():
                         'environment variable.')
     args = parser.parse_args()
 
-    if not (args.sample_op or args.sample_ft):
+    if not (args.op_sample_rate != '0' or args.fetch_sample_rate != '0'):
         print("Error! Neither IBS op nor IBS fetch samples were requested.")
         parser.error('Select -o and/or -f to work on op and/or fetch samples')
 
@@ -425,10 +433,12 @@ def parse_and_run_ibs():
         ibs_monitor_cmd = [ibs_monitor_bin, '-l', ld_debug_file]
         if args.working_dir:
             ibs_monitor_cmd += ['-w', args.working_dir]
-        if args.sample_op:
+        if args.op_sample_rate != '0':
             ibs_monitor_cmd += ['-o', op_sample_file]
-        if args.sample_ft:
+            ibs_monitor_cmd += ['-r', args.op_sample_rate]
+        if args.fetch_sample_rate != '0':
             ibs_monitor_cmd += ['-f', fetch_sample_file]
+            ibs_monitor_cmd += ['-s', args.fetch_sample_rate]
         ibs_monitor_cmd += prog
 
         # Set up the command to run the IBS decoding application
@@ -439,10 +449,10 @@ def parse_and_run_ibs():
             print("    " + str(ibs_tools_dir))
             sys.exit("Could not run requested commands.")
         ibs_decoder_cmd = [ibs_decoder_bin]
-        if args.sample_op:
+        if args.op_sample_rate != '0':
             ibs_decoder_cmd += ['-i', op_sample_file]
             ibs_decoder_cmd += ['-o', op_csv_file]
-        if args.sample_ft:
+        if args.fetch_sample_rate != '0':
             ibs_decoder_cmd += ['-f', fetch_sample_file]
             ibs_decoder_cmd += ['-g', fetch_csv_file]
 
@@ -462,25 +472,25 @@ def parse_and_run_ibs():
             sys.exit(str(err.args[0]))
     else:
         # check if sample csv files exist
-        if args.sample_op and not os.path.exists(op_csv_file):
+        if args.op_sample_rate != '0' and not os.path.exists(op_csv_file):
             parser.error('IBS op samples specified, but CSV file '
                          + op_csv_file + ' not found!')
-        if args.sample_ft and not os.path.exists(fetch_csv_file):
+        if args.fetch_sample_rate != '0' and not os.path.exists(fetch_csv_file):
             parser.error('IBS fetch samples specified, but CSV file '
                          + fetch_csv_file + ' not found!')
         if not os.path.exists(ld_debug_file):
             parser.error('IBS LD_DEBUG info file ('
                          + ld_debug_file + ') does not exist!')
-    return (bench_file, args.sample_op, args.sample_ft, op_csv_file,
-            fetch_csv_file, ld_debug_file, op_out_file, fetch_out_file,
-            args.timer)
+    return (bench_file, args.op_sample_rate, args.fetch_sample_rate,
+            op_csv_file, fetch_csv_file, ld_debug_file, op_out_file,
+            fetch_out_file, args.timer)
 
 def main():
     """Main function for this application"""
     app_start_time = time()
 
     # poi: program of interest
-    (poi, dump_op, dump_ft, op_csv_fn, fetch_csv_fn, ld_debug_fn,
+    (poi, dump_op_rate, dump_ft_rate, op_csv_fn, fetch_csv_fn, ld_debug_fn,
      op_out_fn, fetch_out_fn, timer) = parse_and_run_ibs()
 
     annotate_start_time = time()
@@ -504,7 +514,7 @@ def main():
 
     dump_and_lookup_start_time = time()
 
-    if dump_op:
+    if dump_op_rate != '0':
         print("Beginning looking up instructions for IBS op samples...")
         op_lookup_start_time = time()
         op_res = Parallel(n_jobs=num_cores-1, pre_dispatch=('1.5*n_jobs'))(
@@ -512,9 +522,9 @@ def main():
             for start_byte, end_byte in dump_csv(op_csv_fn))
         op_lookup_done_time = time()
         print("Done with IBS op lookups.")
-    if dump_ft:
+    if dump_ft_rate != '0':
         proc = None
-        if dump_op:
+        if dump_op_rate != '0':
             # pipeline the final file write with fetch sample processing
             proc = Process(target=write_csv,
                            args=(op_res, op_csv_fn, op_out_fn))
@@ -530,7 +540,7 @@ def main():
         fetch_write_done_time = time()
         if proc is not None:
             proc.join()
-    elif dump_op:
+    elif dump_op_rate != '0':
         write_csv(op_res, op_csv_fn, op_out_fn)
         op_write_done_time = time()
 
@@ -546,18 +556,18 @@ def main():
         print("\tApplication time: %.3f s" % app_runtime)
         print("\tParsing libraries time: %.3f s" % library_parse)
         print("\tAnnotate and CSV write time: %.3f s" % lookup_and_write)
-        if dump_op:
+        if dump_op_rate != '0':
             op_lookup = op_lookup_done_time - op_lookup_start_time
             print("\t\tIBS Op lookup time: %.3f s" % op_lookup)
             # The op write timer only exists if we are not doing fetch lookups.
             # Otherwise, the fetch lookups and writing take place in parallel.
-            if not dump_ft:
+            if dump_ft_rate == '0':
                 op_write = op_write_done_time - op_lookup_done_time
                 print("\t\tIBS Op CSV write time: %.3f s" % op_write)
-        if dump_ft:
+        if dump_ft_rate != '0':
             fetch_lookup = fetch_lookup_done_time - fetch_lookup_start_time
             fetch_write = fetch_write_done_time - fetch_lookup_done_time
-            if dump_op:
+            if dump_op_rate != '0':
                 possible_op_write = (lookup_and_write - fetch_lookup -
                                      fetch_write - op_lookup)
                 if possible_op_write > 0.5:
