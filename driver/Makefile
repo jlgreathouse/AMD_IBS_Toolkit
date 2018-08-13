@@ -1,4 +1,4 @@
-# Copyright (c) 2015-2017 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (c) 2015-2018 Advanced Micro Devices, Inc. All rights reserved.
 #
 # This file is made available under the Linux kernel's version of the GPLv2
 # See driver/LICENSE for more licensing details.
@@ -30,4 +30,5 @@ endif
 
 clean:
 	$(MAKE) -C $(KDIR) M=$$PWD clean
+	rm -f $$PWD/*.ur-safe
 endif
