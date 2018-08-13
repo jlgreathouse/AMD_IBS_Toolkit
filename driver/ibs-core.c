@@ -389,7 +389,7 @@ static int check_for_ibs_support(void)
 			((c->x86_model >= 0x0 && c->x86_model <= 0x2f) ||
 			(c->x86_model >= 0x50 && c->x86_model < 0x5f)))
 		{
-			unsigned int cpu;
+			unsigned int cpu = 0;
 			pr_info("IBS: Startup enabling workaround for "
 				"Family 17h first-gen CPUs\n");
 			workaround_fam17h_zn = 1;
@@ -450,7 +450,7 @@ static void destroy_ibs_class(void)
 
 static void destroy_ibs_devices(void)
 {
-	unsigned int cpu;
+	unsigned int cpu = 0;
 	for_each_online_cpu(cpu) {
 		if (ibs_op_supported)
 			ibs_device_destroy(IBS_OP, cpu);
@@ -489,7 +489,7 @@ static void unregister_ibs_chrdev(void)
 
 static void destroy_ibs_cpu_structs(void)
 {
-	unsigned int cpu;
+	unsigned int cpu = 0;
 	for_each_possible_cpu(cpu) {
 		free_ibs_buffer(per_cpu_ptr(pcpu_fetch_dev, cpu));
 		free_ibs_buffer(per_cpu_ptr(pcpu_op_dev, cpu));
@@ -504,7 +504,7 @@ static void destroy_ibs_cpu_structs(void)
 static __init int ibs_init(void)
 {
 	int err = 0;
-	unsigned int cpu;
+	unsigned int cpu = 0;
 
 	err = check_for_ibs_support();
 	if (err < 0)

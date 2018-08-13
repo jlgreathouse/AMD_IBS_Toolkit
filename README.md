@@ -156,6 +156,8 @@ This toolkit has been tested to compile and install on the following systems:
     - Using gcc 5.4.0, clang 3.8.0, cppcheck 1.72, pylint 1.5.2
 * Ubuntu 16.10 (Linux kernel 4.8.0-22)
     - Using gcc 6.2.0, clang 3.8.1, cppcheck 1.75
+* Ubuntu 18.04.1 LTS (Linux kernel 4.15.0-20)
+    - Using gcc 7.3.0, clang 6.0.0, cppcheck 1.81, pylint 1.8.3
 
 In addition, it has been tested on the following processors, though its logic should work for any processors in AMD Families 10h, 12h, 14h, 15h, 16h, or 17h that support IBS:
 * AMD Phenom&trade; II X4 B95

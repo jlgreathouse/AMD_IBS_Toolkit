@@ -123,7 +123,7 @@ void free_workaround_structs(void)
 
 void init_workaround_initialize(void)
 {
-	unsigned int cpu;
+	unsigned int cpu = 0;
 	if (!workarounds_started)
 		return;
 	for_each_possible_cpu(cpu) {
@@ -146,7 +146,7 @@ static void enable_fam17h_zn_dyn_workaround(const int cpu)
 	__u64 set_bits;
 	__u64 op_ctl, fetch_ctl;
 	__u64 cur1, cur3;
-	unsigned int cpu_to_use;
+	unsigned int cpu_to_use = 0;
 	/* Check if both op and fetch are off */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
 	/* for_each_cpu() was in 2.6.28, but not topology_sibilng_cpumask() */
@@ -181,7 +181,7 @@ static void disable_fam17h_zn_dyn_workaround(const int cpu)
 {
 	__u64 op_ctl, fetch_ctl;
 	__u64 cur1, cur3, set_bits;
-	unsigned int cpu_to_use;
+	unsigned int cpu_to_use = 0;
 	/* Check if both op and fetch are off */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
 	for_each_cpu(cpu_to_use, topology_sibling_cpumask(cpu))
@@ -248,7 +248,7 @@ void stop_fam17h_zn_dyn_workaround(const int cpu)
 
 void start_fam17h_zn_static_workaround(const int cpu)
 {
-	int cpu_to_offline, cpu_to_online = -1;
+	int cpu_to_offline = -1, cpu_to_online = -1;
 	u64 cur;
 
 	if (!workarounds_started)

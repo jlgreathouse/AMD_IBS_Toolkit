@@ -73,7 +73,7 @@ CXXFLAGS=$(C_AND_CXX_FLAGS) -std=c++99 -I$(HERE).. -fno-strict-aliasing -Wformat
 default: all
 
 check:
-	cppcheck --force --enable=$(CPPCHECK_WARN_FLAG)style,performance,portability,information,missingInclude --error-exitcode=-1 -D __refdata=" " $(CPPCHECK_STD_FLAGS) $(BUILD_THESE) -q -j `nproc`
+	cppcheck --force --enable=$(CPPCHECK_WARN_FLAG)style,performance,portability,missingInclude --error-exitcode=-1 -D __refdata=" " $(CPPCHECK_STD_FLAGS) $(BUILD_THESE) -q -j `nproc`
 	$(if $(shell which pylint 2>/dev/null), \
 	pylint -E $(ANNOTATE_DIR)/ibs_run_and_annotate, \
 	@echo "pylint does not exist, skipping.")
