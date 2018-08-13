@@ -6,7 +6,7 @@ This document describes the steps needed to collect Instruction Based Sampling
 system and associated utilities. This document is included as part of AMD
 Research's IBS Toolkit; while the AMD Research IBS Toolkit contains its own
 driver that allows access to IBS samples, it is an unofficial mechanism that
-will not be mainlined.
+will not be upstreamed.
 
 Official support for performance monitoring mechanisms like AMD IBS is offered
 as part of the Linux kernel's 'perf' infrastructure (frequently referred to as
@@ -36,7 +36,7 @@ discounted:
   * It is the official Linux mechanism for accessing IBS data. This point
     should not be understated -- because perf_events is the Linux kernel's
     mechanism for getting to IBS, drivers like those available in the
-    AMD Research IBS Toolkit will not be mainlined. As such, any software
+    AMD Research IBS Toolkit will not be upstreamed. As such, any software
     you ship that uses IBS would likely want to use the perf_events
     infrastructure rather than shipping this driver with your tool.
   * Because perf_events is the official mechanism to access IBS in Linux,
@@ -429,7 +429,7 @@ to instead use perf_events.
 
 Trademark Attribution
 ===============================================================================
-(c) 2017 Advanced Micro Devices, Inc. All rights reserved.
+(c) 2017-2018 Advanced Micro Devices, Inc. All rights reserved.
 AMD, the AMD Arrow logo, and combinations thereof are trademarks of
 Advanced Micro Devices, Inc. in the United States and/or other jurisdictions.
 Linux is a registered trademark of Linus Torvalds.
