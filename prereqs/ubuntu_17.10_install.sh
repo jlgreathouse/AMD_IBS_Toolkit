@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2017 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (c) 2017-2018 Advanced Micro Devices, Inc. All rights reserved.
 #
 # This file is made available under a 3-clause BSD license.
 # See prereqs/LICENSE for licensing details.
@@ -12,4 +12,4 @@ sudo apt-get install -y build-essential clang cppcheck
 
 # Install Python utilities
 sudo apt-get install -y pylint python-pip python-argparse
-sudo pip install joblib
+sudo pip install joblib parallel
