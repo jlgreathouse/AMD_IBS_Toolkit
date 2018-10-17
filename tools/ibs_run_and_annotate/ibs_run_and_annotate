@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 #
-# Copyright (C) 2017 Advanced Micro Devices, Inc.
+# Copyright (C) 2017-2018 Advanced Micro Devices, Inc.
 
 # This file is distributed under the BSD license described in tools/LICENSE
 
@@ -64,7 +64,7 @@ def inst_lookup(in_file, start_byte, end_byte, pid, poi, fetch=False):
     It will ignore samples not from the target process, any samples from kernel
     mode, and any fetch samples without valid physical addrsses.
 
-    It uses objdump to obtain this informatino; because calling a separate
+    It uses objdump to obtain this information. Because calling a separate
     process like objdump can be very slow, this function attempts to cache
     any lookups it does, and actually prefetches onto future instructions
     in an attempt to proactively fill up that cache.
@@ -334,46 +334,50 @@ def parse_and_run_ibs():
                         help='Directory used to store the temporary IBS '\
                         'trace files. This includes the raw IBS data '\
                         'output from the monitor and the CSV files output '\
-                        'from the IBS decoder.')
-    parser.add_argument('--op_samples', default='ibs_op.dat',
+                        'from the IBS decoder. (default: current working dir)')
+    parser.add_argument('--op_sample_file', default='ibs_op.dat',
                         help='File used to store IBS op traces from the '\
                         'monitor. This file will be stored into the TEMP_DIR '\
-                        'directory.')
-    parser.add_argument('--fetch_samples', default='ibs_fetch.dat',
+                        'directory. (default: %(default)s)')
+    parser.add_argument('--fetch_sample_file', default='ibs_fetch.dat',
                         help='File used to store IBS fetch traces from the '\
                         'monitor. This file will be stored into the TEMP_DIR '\
-                        'directory.')
+                        'directory. (default: %(default)s)')
     parser.add_argument('--op_csv', default='ibs_op.csv',
                         help='File used to hold decoded IBS op traces. '\
                         'Will create/look for this file in the TEMP_DIR '\
-                        'directory.')
+                        'directory. (default: %(default)s)')
     parser.add_argument('--fetch_csv', default='ibs_fetch.csv',
                         help='File used to hold decoded IBS fetch traces. '\
                         'Will create/look for this file in the TEMP_DIR '\
-                        'directory.')
+                        'directory. (default: %(default)s)')
     parser.add_argument('--ld_debug_file', default='ld_debug.txt',
                         help='File to hold the LD_DEBUG information about '\
                         'the application, so that we can understand its '\
                         'dynamic library locations. Will create/look for '\
-                        'this file in the TEMP_DIR directory.')
+                        'this file in the TEMP_DIR directory.'\
+                        ' (default: %(default)s)')
     parser.add_argument('-d', '--out_dir',
                         default=os.path.abspath(os.getcwd()),
-                        help='Directory used to store the tool output.')
+                        help='Directory used to store the tool output.'\
+                        ' (default: current working dir)')
     parser.add_argument('--op_output', default='ibs_annotated_op.csv',
                         help='File used to hold the annotated IBS op traces. '\
-                        'Will be created in the OUT_DIR directory.')
+                        'Will be created in the OUT_DIR directory.'\
+                        ' (default: %(default)s)')
     parser.add_argument('--fetch_output', default='ibs_annotated_fetch.csv',
                         help='File used to hold the annotated IBS fetch '\
-                        'traces. Will be created in the OUT_DIR directory.')
+                        'traces. Will be created in the OUT_DIR directory.'\
+                        ' (default: %(default)s)')
     parser.add_argument('-w', '--working_dir',
                         default=os.path.abspath(os.getcwd()),
                         help='Set the working directory for the program '\
-                        'under test.')
+                        'under test. (default: current working dir)')
     parser.add_argument('--timer', action='store_true',
                         help='Time different sections of this runscript.')
     parser.add_argument('command', nargs="*",
                         help='Command to run program under test, or pointer '\
-                        'to the binary that was used to gather the CSV '\
+                        'to the binary that was used when gathering the CSV '\
                         'files. This will be combined with WORKING_DIR if '\
                         'the command is not an absolute path. If WORKING_DIR '\
                         'is not set, or the binary is not found in that '\
@@ -440,11 +444,10 @@ def parse_and_run_ibs():
             ibs_monitor_cmd += ['-f', fetch_sample_file]
             ibs_monitor_cmd += ['-s', args.fetch_sample_rate]
         ibs_monitor_cmd += prog
-
         # Set up the command to run the IBS decoding application
         ibs_decoder_bin = os.path.join(ibs_tools_dir, 'ibs_decoder/ibs_decoder')
         if not os.path.isfile(ibs_monitor_bin):
-            print("Error! The IBS monitor application was not found.")
+            print("Error! The IBS decoder application was not found.")
             print("Have you run 'make' in the tools directory?")
             print("    " + str(ibs_tools_dir))
             sys.exit("Could not run requested commands.")
