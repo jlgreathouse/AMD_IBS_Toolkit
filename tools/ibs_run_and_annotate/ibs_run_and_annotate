@@ -391,8 +391,8 @@ def parse_and_run_ibs():
 
     # After parsing all the arguments, set up directory and file paths
     ibs_tools_dir = os.path.join(os.path.dirname(__file__), "..")
-    op_sample_file = os.path.join(args.temp_dir, args.op_samples)
-    fetch_sample_file = os.path.join(args.temp_dir, args.fetch_samples)
+    op_sample_file = os.path.join(args.temp_dir, args.op_sample_file)
+    fetch_sample_file = os.path.join(args.temp_dir, args.fetch_sample_file)
     op_csv_file = os.path.join(args.temp_dir, args.op_csv)
     fetch_csv_file = os.path.join(args.temp_dir, args.fetch_csv)
     ld_debug_file = os.path.join(args.temp_dir, args.ld_debug_file)
