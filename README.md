@@ -178,6 +178,8 @@ In addition, it has been tested on the following processors, though its logic sh
     - Family 17h Model 01h (CPU formerly code-named "Zen")
 * AMD Ryzen 5 2400GE
     - Family 17h Model 11h (CPU formerly code-named "Zen")
+* AMD Ryzen 7 3700 X
+    - Family 17h Model 71h (CPU formerly code-named "Zen 2")
 
 Using the AMD Research IBS Toolkit
 --------------------------------------------------------------------------------
@@ -279,5 +281,5 @@ For more information about micro-ops in AMD cores, please refer to AMD's softwar
 
 Trademark Attribution
 --------------------------------------------------------------------------------
-&copy; 2017-2018 Advanced Micro Devices, Inc. All rights reserved. AMD, the AMD Arrow logo, AMD Phenom, Opteron, Ryzen, EPYC, and combinations thereof are trademarks of Advanced Micro Devices, Inc. in the United States and/or other jurisdictions. Linux is a registered trademark of Linus Torvalds. Other names are for informational purposes only and may be trademarks of their
+&copy; 2017-2019 Advanced Micro Devices, Inc. All rights reserved. AMD, the AMD Arrow logo, AMD Phenom, Opteron, Ryzen, EPYC, and combinations thereof are trademarks of Advanced Micro Devices, Inc. in the United States and/or other jurisdictions. Linux is a registered trademark of Linus Torvalds. Other names are for informational purposes only and may be trademarks of their
 respective owners.

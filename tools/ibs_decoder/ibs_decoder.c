@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015-2017 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2019 Advanced Micro Devices, Inc.
  *
  * This file is distributed under the BSD license described in tools/LICENSE
  *
@@ -643,6 +643,12 @@ static void output_fetch_entry(FILE *outf, ibs_fetch_t fetch,
                 fprintf(outf, "1 GB,");
                 break;
             case 3:
+                if (family == 0x17)
+                {
+                    fprintf(outf, "16 KB,");
+                    break;
+                }
+                /* Fallthrough */
             default:
                 fprintf(outf, "Reserved-%" PRIu8 ",",
                         fetch.fetch_ctl.reg.ibs_l1_tlb_pg_sz);
@@ -750,5 +756,5 @@ int main(int argc, char *argv[]) {
         do_fetch_work();
 
     printf("Decoding complete. Exiting application.\n\n");
-	exit(EXIT_SUCCESS);
+    exit(EXIT_SUCCESS);
 }

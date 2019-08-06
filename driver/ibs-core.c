@@ -1,7 +1,7 @@
 /*
  * Linux kernel driver for the AMD Research IBS Toolkit
  *
- * Copyright (C) 2015-2018 Advanced Micro Devices, Inc.
+ * Copyright (C) 2015-2019 Advanced Micro Devices, Inc.
  *
  * This driver is available under the Linux kernel's version of the GPLv2.
  * See driver/LICENSE for more licensing details.
@@ -88,8 +88,8 @@ static int workaround_fam10h_err_420 = 0;
 /* Family 15h Models 00h-1Fh Erratum 718: the processor only sets but never
  * clears MSR C001_1037[3], [6], and [19]. */
 static int workaround_fam15h_err_718 = 0;
-/* Family 17h Model 07h processors do not necessarily enable IBS by default.
- * They require setting some bits in each core to run IBS.
+/* First-generation Family 17h processors do not necessarily enable IBS by
+ * default. They require setting some bits in each core to run IBS.
  * This can be done with a BIOS setting on many boards, but we run the same
  * settings in this driver to increase compatibility */
 static int workaround_fam17h_zn = 0;
