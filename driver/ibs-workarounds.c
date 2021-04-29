@@ -289,15 +289,24 @@ void start_fam17h_zn_static_workaround(const int cpu)
 	{
 		if (cpu_to_offline != cpu)
 		{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,7,0)
+			remove_cpu(cpu_to_offline);
+#else
 			cpu_down(cpu_to_offline);
+#endif
 			cpu_to_online = cpu_to_offline;
 		}
 	}
 	/* We want to turn on some bits on each physical core when we enable
 	 * the driver, or if that core comes up after we enable the driver. */
 	custom_wrmsrl_on_cpu(cpu, FAM17H_MSR_WA_2, (cur | FAM17H_MSR_WA_2_BITS));
-	if (cpu_to_online != -1)
+	if (cpu_to_online != -1) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,7,0)
+		add_cpu(cpu_to_online);
+#else
 		cpu_up(cpu_to_online);
+#endif
+	}
 }
 
 void stop_fam17h_zn_static_workaround(const int cpu)

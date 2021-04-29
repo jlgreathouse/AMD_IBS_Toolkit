@@ -31,7 +31,7 @@
 #include <linux/irq_work.h>
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37) || LINUX_VERSION_CODE >= KERNEL_VERSION(5,8,0)
 #include <asm/apic.h>
 #endif
 
@@ -120,12 +120,18 @@ static void init_ibs_dev(struct ibs_dev *dev, int cpu)
 	dev->cpu = cpu;
 	atomic_set(&dev->in_use, 0);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,11,0)
+	dev->bottom_half = IRQ_WORK_INIT_LAZY(&handle_ibs_work);
+#else
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37)
 	init_irq_work(&dev->bottom_half, &handle_ibs_work);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,5,0)
+	atomic_set(&dev->bottom_half.flags, IRQ_WORK_LAZY);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
 	dev->bottom_half.flags = IRQ_WORK_LAZY;
-#endif
-#endif
+#endif // >= 5.5.0 or >= 3.9.0
+#endif // >= 2.6.37
+#endif // >= 5.11.0
 	dev->ibs_fetch_supported = ibs_fetch_supported;
 	dev->ibs_op_supported = ibs_op_supported;
 	dev->ibs_brn_trgt_supported = ibs_brn_trgt_supported;
